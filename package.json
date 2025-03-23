@@ -1,0 +1,19 @@
+{
+  "name": "ai-cluedo",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AI-powered Cluedo game using LLMs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ajv": "^8.12.0",
+    "commander": "^13.1.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "openai": "^4.80.1",
+    "socket.io": "^4.8.1"
+  }
+}

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Cluedo</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="mode-selection" class="center-screen">
+    <h1>AI Cluedo</h1>
+    <div class="mode-options">
+      <button onclick="startGame('spectate')">Start Game</button>
+    </div>
+  </div>
+
+  <div id="game-container" class="hidden">
+    <div class="container">
+      <div id="winner-overlay" class="hidden">
+        <div class="winner-modal">
+          <h2>🏆 Game Over!</h2>
+          <div class="winner-content">
+            <div class="winner-agent"></div>
+            <div class="winner-solution"></div>
+            <div class="game-stats"></div>
+          </div>
+        </div>
+      </div>
+      <div class="main-content">
+        <div class="game-board">
+          <div class="rooms">
+            <div class="room" data-room="Kitchen">
+              <div class="room-indicator"></div>
+              <span>🍳</span> Kitchen
+            </div>
+            <div class="room" data-room="Ballroom">
+              <div class="room-indicator"></div>
+              <span>💃</span> Ballroom
+            </div>
+            <div class="room" data-room="Conservatory">🌿 Conservatory</div>
+            <div class="room" data-room="Dining Room">🍽️ Dining</div>
+            <div class="room" data-room="Billiard Room">🎱 Billiards</div>
+            <div class="room" data-room="Library">📚 Library</div>
+            <div class="room" data-room="Lounge">🛋️ Lounge</div>
+            <div class="room" data-room="Hall">🚪 Hall</div>
+            <div class="room" data-room="Study">📖 Study</div>
+          </div>
+        </div>
+        
+        <div class="game-log">
+          <h2>Investigation Log</h2>
+          <div id="log-messages"></div>
+        </div>
+      </div>
+
+      <div class="players-panel">
+        <div class="players">
+          <h2>Agents</h2>
+          <div class="turn-info">
+            <div id="current-turn">Turn <span class="current-number">0</span></div>
+            <div class="solution-info">
+              <div class="solution-label">Solution:</div>
+              <div id="solution-display">Mrs. Peacock in the Dining Room with the Revolver</div>
+            </div>
+          </div>
+          <div id="players-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="shown-card-history"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    
+    // Add mode selection handlers
+    function startGame(mode) {
+      document.getElementById('mode-selection').classList.add('hidden');
+      document.getElementById('game-container').classList.remove('hidden');
+      
+      socket.emit('game-mode', mode);
+    }
+
+    socket.on('game-event', (event) => {
+      const logElement = document.getElementById('log-messages');
+      const timestamp = new Date(event.timestamp).toLocaleTimeString();
+      
+      let content = '';
+      switch(event.type) {
+        case 'SUGGESTION':
+          content = `
+            <div class="log-entry">
+              <span class="timestamp">${timestamp}</span>
+              <span class="agent">${event.agent}</span> suggests:
+              <div class="suggestion-text">
+                ${event.suggestion.suspect} in the ${event.suggestion.room} with the ${event.suggestion.weapon}
+              </div>
+              ${event.reasoning ? `<div class="reasoning">${event.reasoning}</div>` : ''}
+            </div>
+          `;
+          break;
+          
+        case 'CHALLENGE':
+          content = `
+            <div class="log-entry">
+              <span class="timestamp">${timestamp}</span>
+              <span class="agent">${event.agent}</span> showed 
+              <span class="shown-card">${event.cardShown}</span>
+              to disprove the suggestion
+            </div>
+          `;
+          break;
+          
+        case 'ACCUSATION':
+          content = `
+            <div class="log-entry">
+              <span class="timestamp">${timestamp}</span>
+              <span class="agent">${event.agent}</span>
+              <span class="result ${event.result ? 'correct' : 'incorrect'}">
+                ${event.message}
+              </span>
+            </div>
+          `;
+          break;
+          
+        default:
+          content = `
+            <div class="log-entry">
+              <span class="timestamp">${timestamp}</span>
+              ${event.message}
+            </div>
+          `;
+      }
+      
+      logElement.insertAdjacentHTML('afterbegin', content);
+    });
+
+    // Update game state
+    socket.on('game-state', (state) => {
+      // Update turn number
+      const currentTurn = document.getElementById('current-turn');
+      currentTurn.innerHTML = `Turn <span class="current-number">${state.currentTurn || 0}</span>`;
+      
+      // Update solution display if available
+      if (state.solution) {
+        const solutionDisplay = document.getElementById('solution-display');
+        solutionDisplay.textContent = `${state.solution.suspect} in the ${state.solution.room} with the ${state.solution.weapon}`;
+      }
+      
+      // Update agents list with proper turn highlighting
+      const playersList = document.getElementById('players-list');
+      playersList.innerHTML = state.agents.map(agent => `
+        <div class="player ${agent.isAlive ? 'active' : 'eliminated'} ${agent.name === state.activeAgent ? 'current-turn' : ''}">
+          <div class="player-header">
+            <span class="agent-name">${agent.name}</span>
+            <span class="status-icon">${agent.isAlive ? '👾 Active' : '💀 Eliminated'}</span>
+          </div>
+          ${agent.cards ? `
+            <div class="agent-cards">
+              ${agent.cards.map(card => `<span class="card">${card}</span>`).join(' ')}
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+
+      // Update game board - highlight suggested rooms
+      updateGameBoard(state.turnHistory);
+    });
+
+    // Add specific handler for solution
+    socket.on('game-solution', (solution) => {
+      const solutionDisplay = document.getElementById('solution-display');
+      solutionDisplay.textContent = `${solution.suspect} in the ${solution.room} with the ${solution.weapon}`;
+    });
+
+    // Function to update game board with highlighted rooms
+    function updateGameBoard(turnHistory) {
+      // Reset all rooms
+      document.querySelectorAll('.room').forEach(room => {
+        room.classList.remove('suggested', 'recent-suggestion');
+        room.querySelector('.room-indicator').textContent = '';
+      });
+
+      // Get recent suggestions (last 3 turns)
+      const recentSuggestions = turnHistory
+        .filter(turn => turn.action === 'suggestion')
+        .slice(-3);
+
+      // Highlight suggested rooms
+      recentSuggestions.forEach((turn, index) => {
+        const roomElement = document.querySelector(`.room[data-room="${turn.suggestion.room}"]`);
+        if (roomElement) {
+          roomElement.classList.add('suggested');
+          if (index === recentSuggestions.length - 1) {
+            roomElement.classList.add('recent-suggestion');
+            // Add agent indicator
+            const indicator = roomElement.querySelector('.room-indicator');
+            indicator.textContent = turn.agent.charAt(0).toUpperCase();
+          }
+        }
+      });
+    }
+  </script>
+
+  <style>
+    /* Updated layout styles */
+    .container {
+      display: flex;
+      gap: 30px;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+      max-width: 800px;
+    }
+
+    .players-panel {
+      width: 300px;
+      flex-shrink: 0;
+    }
+
+    /* Game board styles */
+    .game-board {
+      background: #2a2a2a;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .rooms {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+
+    .room {
+      position: relative;
+      background: #333;
+      padding: 15px;
+      border-radius: 6px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .room-indicator {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: transparent;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
+      box-shadow: 0 0 0 2px #1a1a1a;
+    }
+
+    .room.suggested {
+      background: #2d3748;
+    }
+
+    .room.recent-suggestion {
+      background: #2d3748;
+      box-shadow: 0 0 0 2px #4a9eff;
+    }
+
+    .room.recent-suggestion .room-indicator {
+      display: flex;
+      background: #4a9eff;
+    }
+
+    /* Investigation log styles */
+    .game-log {
+      background: #2a2a2a;
+      border-radius: 8px;
+      padding: 20px;
+      height: 400px;
+      overflow-y: auto;
+    }
+
+    #log-messages {
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 12px;
+    }
+
+    .log-entry {
+      padding: 12px 15px;
+      color: #ddd;
+      line-height: 1.5;
+    }
+
+    .suggestion-text {
+      margin-top: 8px;
+      margin-left: 12px;
+      color: #ddd;
+    }
+
+    .reasoning {
+      margin-top: 8px;
+      margin-left: 12px;
+      color: #888;
+      font-style: italic;
+    }
+
+    /* Players panel styles */
+    .players {
+      background: #2a2a2a;
+      border-radius: 8px;
+      padding: 20px;
+      position: sticky;
+      top: 20px;
+    }
+
+    .player {
+      background: #333;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      border-left: 3px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .player.current-turn {
+      background: #2d3748;
+      border-left-color: #4a9eff;
+      box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.2);
+    }
+
+    .player-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .agent-name {
+      font-weight: 500;
+    }
+
+    .status-icon {
+      font-size: 0.9em;
+      opacity: 0.8;
+    }
+
+    .agent-cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 8px;
+    }
+
+    .card {
+      background: #222;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #ddd;
+    }
+
+    .player.eliminated {
+      opacity: 0.6;
+    }
+
+    .player.eliminated .card {
+      background: #1a1a1a;
+    }
+
+    /* Turn info styles */
+    .turn-info {
+      background: #333;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    #current-turn {
+      font-size: 1.1em;
+      margin-bottom: 8px;
+    }
+
+    .current-number {
+      color: #4a9eff;
+      font-weight: 600;
+    }
+
+    .solution-info {
+      font-size: 0.9em;
+      color: #888;
+    }
+
+    .solution-label {
+      margin-bottom: 4px;
+    }
+
+    #solution-display {
+      color: #4a9eff;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    /* Remove grid background */
+    body {
+      background: #1a1a1a;
+      margin: 0;
+      padding: 20px;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    h2 {
+      color: #4a9eff;
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: 1.2em;
+    }
+
+    .shown-card {
+      color: #4a9eff;
+      font-weight: 500;
+      background: rgba(74, 158, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* Current turn styles */
+    .current-agent {
+      color: #4a9eff;
+      font-weight: 600;
+    }
+  </style>
+</body>
+</html> 
