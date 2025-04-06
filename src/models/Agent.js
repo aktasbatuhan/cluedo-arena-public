@@ -83,15 +83,26 @@ export class Agent {
    * @param {Object} suggestion - The suggestion to evaluate (suspect, weapon, room)
    * @returns {Promise<Object>} Challenge result with canChallenge flag and cardToShow
    */
-  async evaluateChallenge(suggestion) {
-    const result = await LLMService.evaluateChallenge(this, suggestion, this.cards);
+  async evaluateChallenge(suggestion, matchingCards) {
+    // Ensure matchingCards is an array of strings, not a Set or single value
+    const cardsArray = matchingCards ? 
+      (Array.isArray(matchingCards) ? matchingCards : [matchingCards]) : 
+      [];
     
-    // Update memory with challenge result
-    if (result.cardToShow) {
-      this.memory.addKnownCard(result.cardToShow);
+    try {
+      const result = await LLMService.evaluateChallenge(this, suggestion, cardsArray);
+      
+      // Update memory with challenge result
+      if (result.cardToShow) {
+        this.memory.addKnownCard(result.cardToShow);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error(`Challenge evaluation failed for ${this.name}:`, error);
+      // If evaluation fails, don't show any card
+      return { cardToShow: null, reasoning: "Error in challenge evaluation" };
     }
-    
-    return result;
   }
 
   /**
@@ -115,13 +126,21 @@ export class Agent {
         throw new Error('Game reference not set');
       }
       
+      console.log(`[DEBUG] Formatting memory for ${this.name} accusation consideration...`);
+      const memoryState = await this.memory.formatMemoryForLLM();
+      console.log(`[DEBUG] Memory formatted for ${this.name}.`);
+
       const gameState = {
         currentTurn: this.game.currentTurn,
         knownCards: this.cards,
-        memory: await this.memory.formatMemoryForLLM()
+        memory: memoryState
       };
       
-      return await LLMService.considerAccusation(this, gameState);
+      console.log(`[DEBUG] Calling LLMService.considerAccusation for ${this.name} (Model: ${this.model})...`);
+      const result = await LLMService.considerAccusation(this, gameState);
+      console.log(`[DEBUG] LLMService.considerAccusation completed for ${this.name}.`);
+      return result;
+
     } catch (error) {
       console.error(`Accusation consideration failed for ${this.name}:`, error);
       return {
@@ -195,5 +214,26 @@ export class Agent {
   async processTurn() {
     // Perform memory maintenance (cleanup, optimization)
     this.memory.maintain();
+  }
+
+  /**
+   * Moves the agent to a new location (room).
+   * For now, this is a placeholder. In a real game, this would involve
+   * dice rolls, pathfinding, or player choice.
+   * It ensures the agent has *some* location assigned.
+   *
+   * @param {Array<string>} availableRooms - List of all possible rooms.
+   */
+  move(availableRooms) {
+    // Simple placeholder: Assign a random room if no location exists
+    // Or potentially move to an adjacent room in a full implementation.
+    if (!this.location) {
+      this.location = availableRooms[Math.floor(Math.random() * availableRooms.length)];
+      console.log(`${this.name} assigned starting location: ${this.location}`); // Log initial assignment
+    } else {
+      // In a full implementation, add logic for moving to adjacent rooms.
+      // For now, the agent stays put after the initial assignment.
+      console.log(`${this.name} stays in location: ${this.location}`);
+    }
   }
 } 

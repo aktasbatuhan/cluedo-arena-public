@@ -15,38 +15,41 @@ Cluedo AI creates a controlled environment where multiple language learning mode
 - **Web Visualization**: Optional web interface for watching games in progress
 - **Leaderboard**: Compare performance across LLM models
 
-## Installation
+## Quick Start
 
-```bash
-# Clone the repository
-git clone https://github.com/aktasbatuhan/cluedo-arena-public
-cd cluedo-ai
+1.  **Clone the Repository:**
+    ```bash
+    git clone https://github.com/your-username/cluedo-arena.git
+    cd cluedo-arena
+    ```
 
-# Install dependencies
-npm install
+2.  **Install Dependencies:**
+    ```bash
+    npm install
+    ```
 
-# Set up your environment variables
-cp .env.example .env
-# Edit .env to add your OpenRouter API key
-```
+3.  **Configure Environment Variables:**
+    Rename `.env.example` to `.env` and fill in the necessary values:
+    ```bash
+    # Edit .env to add your Cohere API key
+    cp .env.example .env
+    nano .env # Or your preferred editor
+    ```
 
-## Usage
-
-```bash
-# Run a single game
-npm start
-
-# Run multiple games for better statistical comparison
-node src/index.js --games 10
-```
+4.  **Start the Application:**
+    ```bash
+    npm start
+    ```
+    The application will be available at `http://localhost:3000` (or the port specified in your `.env` file).
 
 ## Configuration
 
 All game configuration is done through environment variables:
 
-- `OPENROUTER_API_KEY`: Your API key for OpenRouter
-- `SITE_URL`: Your site URL for OpenRouter
-- `SITE_NAME`: Your site name for OpenRouter
+- `COHERE_API_KEY`: Your API key for Cohere
+- `SITE_URL`: Your site URL for logging or other services
+- `SITE_NAME`: Your site name for logging or other services
+- `MONGO_URI`: Connection string for your MongoDB database
 - `PORT`: Server port for web visualization (default: 3000)
 - `MAX_TURNS`: Maximum turns per game (default: 120)
 
@@ -82,7 +85,8 @@ You can add your own LLM models by modifying the `MODEL_LIST` array in `src/serv
 
 - Node.js 14+
 - NPM 6+
-- OpenRouter API key
+- MongoDB instance (local or cloud-based like MongoDB Atlas)
+- Cohere API key
 
 ## License
 
@@ -91,3 +95,21 @@ Open source - please add your preferred license
 ## Contributing
 
 Contributions welcome! Please feel free to submit a Pull Request.
+
+## Environment Variables
+
+The application uses the following environment variables (defined in `.env`):
+
+-   `COHERE_API_KEY`: Your API key for Cohere. Get one from [cohere.com](https://cohere.com/).
+-   `SITE_URL`: (Optional) Your site URL, might be used for logging or other services.
+-   `SITE_NAME`: (Optional) Your site name, might be used for logging or other services.
+-   `MONGO_URI`: Connection string for your MongoDB database.
+-   `PORT`: Port number for the server to run on (default: 3000).
+-   `MAX_TURNS`: Maximum number of turns allowed in a game (default: 120).
+-   **LLM Integration:** Utilizes Large Language Models (currently via Cohere API) for agent decision-making.
+-   **Game Logic:** Implements the core rules and mechanics of Cluedo.
+-   **Agent Memory:** Basic implementation for agents to remember cards and deductions.
+-   **MongoDB:** Stores game results and potentially agent performance data.
+-   **Logging:** Detailed logging of game events and LLM interactions.
+
+## Future Enhancements

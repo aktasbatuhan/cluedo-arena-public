@@ -1,19 +1,40 @@
 {
-  "name": "ai-cluedo",
+  "name": "cluedo-arena-public",
   "version": "1.0.0",
-  "type": "module",
-  "description": "AI-powered Cluedo game using LLMs",
+  "description": "A simulation environment for comparing LLM performance in the game Cluedo (Clue).",
   "main": "src/index.js",
+  "type": "module",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "dev": "nodemon --ignore '*.log' --ignore 'logs/*' --ignore 'game_results.json' src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "cluedo",
+    "clue",
+    "llm",
+    "ai",
+    "simulation",
+    "benchmark"
+  ],
+  "author": "Batuhan Aktas",
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "eslint": "^8.56.0"
   },
   "dependencies": {
     "ajv": "^8.12.0",
+    "axios": "^1.6.2",
+    "cohere-ai": "^7.10.2",
     "commander": "^13.1.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
+    "express": "^4.18.2",
+    "mongoose": "^8.0.2",
     "openai": "^4.80.1",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1"
   }
 }

@@ -193,7 +193,12 @@ export class Game extends EventEmitter {
     console.time(`[Turn] ${agent.name}'s full turn`);
 
     try {
-      // 1. Make suggestion first
+      // 0. Move the agent (placeholder for now)
+      console.log(`${agent.name} is moving...`);
+      agent.move(this.ROOMS); // Call the agent's move method
+      console.log(`${agent.name} is now in room: ${agent.location}`);
+
+      // 1. Make suggestion (must be in the agent's current room)
       console.log(`${agent.name} is making a suggestion...`);
       const suggestion = await agent.makeSuggestion(this.getGameState());
       turnResult.suggestion = suggestion;
@@ -225,7 +230,23 @@ export class Game extends EventEmitter {
 
       // 3. After seeing challenge results, consider making an accusation
       console.log(`${agent.name} is considering an accusation...`);
-      const accusationDecision = await agent.considerAccusation();
+      console.log(`[DEBUG] Calling agent.considerAccusation() for ${agent.name}...`);
+      
+      let accusationDecision;
+      try {
+        accusationDecision = await agent.considerAccusation();
+        console.log(`[DEBUG] agent.considerAccusation() completed for ${agent.name}.`);
+      } catch (error) {
+        console.error(`Error during accusation consideration for ${agent.name}:`, error.message);
+        // If accusation fails, use a safe default (don't accuse)
+        accusationDecision = {
+          shouldAccuse: false,
+          accusation: { suspect: null, weapon: null, room: null },
+          confidence: { suspect: 0, weapon: 0, room: 0 },
+          reasoning: "Error in accusation evaluation, choosing not to accuse."
+        };
+      }
+      
       turnResult.accusationDecision = accusationDecision;
       console.log('Accusation decision:', accusationDecision);
       
@@ -372,21 +393,46 @@ export class Game extends EventEmitter {
           (b.position === suggestion.room ? -1 : 0)
         );
 
+      // Shuffle agents to randomize challenge order
+      challengers.sort(() => Math.random() - 0.5);
+
       for (const challenger of challengers) {
-        const challengeResult = await challenger.evaluateChallenge(suggestion);
-        
-        if (challengeResult.canChallenge) {
-          // Validate the challenger actually has the card
-          if (!challenger.cards.has(challengeResult.cardToShow)) {
-            console.error(`Invalid challenge from ${challenger.name}: Does not possess ${challengeResult.cardToShow}`);
+        // Find the actual cards the challenger holds that match the suggestion
+        const agentCards = Array.from(challenger.cards); // Assuming challenger.cards is a Set
+        const actualMatchingCards = agentCards.filter(card => 
+          card === suggestion.suspect ||
+          card === suggestion.weapon ||
+          card === suggestion.room
+        );
+
+        if (actualMatchingCards.length > 0) { // Check if the array has cards
+          console.log(`${challenger.name} can potentially challenge with card(s): ${actualMatchingCards.join(', ')}`);
+          
+          // Log the type of actualMatchingCards to debug
+          console.log(`DEBUG: actualMatchingCards is ${Array.isArray(actualMatchingCards) ? 'array' : typeof actualMatchingCards} with length ${actualMatchingCards.length}`);
+          
+          // Ensure we're passing an array, even if it's a single string item
+          const matchingCardsArray = Array.isArray(actualMatchingCards) ? actualMatchingCards : [actualMatchingCards];
+          
+          // Pass the array of matching card names to evaluateChallenge
+          try {
+            const challengeDecision = await challenger.evaluateChallenge(
+              suggestion,
+              matchingCardsArray // Pass the guaranteed array of strings
+            );
+
+            if (challengeDecision.cardToShow) {
+              return {
+                canChallenge: true,
+                challengingAgent: challenger.name,
+                cardToShow: challengeDecision.cardToShow
+              };
+            }
+          } catch (error) {
+            console.error(`Error during challenge evaluation from ${challenger.name}:`, error.message);
+            // Log but continue to next challenger - don't let one failure stop the game
             continue;
           }
-
-          return {
-            canChallenge: true,
-            challengingAgent: challenger.name,
-            cardToShow: challengeResult.cardToShow
-          };
         }
       }
 

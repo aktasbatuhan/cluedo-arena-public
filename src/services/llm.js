@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { CohereClient } from "cohere-ai";
 import 'dotenv/config';
 import Ajv from 'ajv';
 import { Game } from '../models/Game.js';
@@ -18,34 +18,32 @@ const __dirname = dirname(__filename);
  * 
  * Each game will randomly assign these models to agents, allowing
  * for fair comparison of model capabilities in the Cluedo environment.
- * All models are accessed through OpenRouter API.
+ * Models should be compatible with the Cohere API.
  * 
  * @type {Array<string>}
  */
 export const MODEL_LIST = [
-  'mistralai/mistral-small-3.1-24b-instruct',                             
-  'anthropic/claude-3.5-sonnet',           
-  'google/gemini-2.0-flash-001',          
-  'cohere/command-a',                         
-  'openai/gpt-4o',   
-  'anthropic/claude-3.5-sonnet'          
+  'command-a-03-2025',          
+  'command-r7b-12-2024',     
+  'command-r-plus-04-2024',      
+  'command-r-08-2024',          
+  'command-r-plus',     
+  'c4ai-aya-expanse-32b'       
 ];
 
-// Initialize OpenAI client with OpenRouter configuration
-const openai = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY,
-  defaultHeaders: {
-    "HTTP-Referer": process.env.SITE_URL,
-    "X-Title": process.env.SITE_NAME,
-  },
-  timeout: 30000
+// Initialize Cohere client
+const cohere = new CohereClient({
+  token: process.env.COHERE_API_KEY,
+  clientOptions: {
+    timeoutInSeconds: 60 // Add a 60-second timeout
+  }
 });
 
 // Initialize JSON schema validator
 const ajv = new Ajv();
 
-// Define JSON schemas
+// Define JSON schemas (Only accusationSchema is actively used for validation now)
+/* // Removed suggestionSchema as validation is simpler now
 const suggestionSchema = {
   type: "object",
   properties: {
@@ -54,9 +52,10 @@ const suggestionSchema = {
     room: { type: "string" },
     reasoning: { type: "string" }
   },
-  required: ["suspect", "weapon", "room"],
+  required: ["suspect", "weapon", "room", "reasoning"], 
   additionalProperties: false
 };
+*/
 
 const accusationSchema = {
   type: "object",
@@ -96,7 +95,7 @@ function extractJSON(response) {
     // Handle plain JSON
     return JSON.parse(response);
   } catch (error) {
-    console.error('JSON extraction failed:', error.message);
+    logger.error('JSON extraction failed:', { error: error.message, response });
     return null;
   }
 }
@@ -175,329 +174,561 @@ export class LLMService {
    */
   static async makeSuggestion(agent, gameState) {
     console.time(`[LLM] ${agent.name} suggestion`);
+    const loggingPayload = {
+      type: 'suggestion',
+      agent: agent.name,
+      model: agent.model,
+      input: {},
+      output: null,
+      error: null,
+      parsedOutput: null,
+      validationStatus: 'pending'
+    };
+
     try {
       const memoryState = await agent.memory.formatMemoryForLLM();
       
-      const prompt = `As ${agent.name}, analyze the game state:
-Known cards: ${Array.from(agent.cards).join(', ')}
-Current turn: ${gameState.currentTurn}
-Available suspects: ${gameState.availableSuspects.join(', ')}
+      const userMessage = `Analyze the game state and make a strategic suggestion:
+Known cards held: ${Array.from(agent.cards).join(', ') || 'None'}
+Current turn number: ${gameState.currentTurn}
+Your current location: ${agent.location} (You must suggest this room)
+Available suspects (excluding yourself, ${agent.name}): ${gameState.availableSuspects.filter(s => s !== agent.name).join(', ')}
 Available weapons: ${gameState.availableWeapons.join(', ')}
-Available rooms: ${gameState.availableRooms.join(', ')}
+Available rooms (you must choose ${agent.location}): ${agent.location}
 
 Your memory and deductions:
-${JSON.stringify(memoryState.knownInformation, null, 2)}
-
-Current deductions:
-${memoryState.currentDeductions}
-
-Recent turn history:
+Known Information: ${JSON.stringify(memoryState.knownInformation, null, 2)}
+Current Deductions: ${memoryState.currentDeductions}
+Recent Turn History:
 ${memoryState.turnHistory.join('\n')}
 
 Make a strategic suggestion considering:
-1. Your known cards and deductions
-2. Previous suggestions and their outcomes
-3. Your current memory state
-4. Strategic room positioning
+1. Your known cards and deductions (don't suggest cards you hold).
+2. Previous suggestions and their outcomes (from Turn History).
+3. Information revealed by others.
+4. Your current room (${agent.location}) - you MUST suggest this room.
+5. Choose a suspect (not yourself) and a weapon that seem most likely based on your deductions, or that would gather the most information.
 
-Format response as JSON:
+Respond ONLY with a JSON object in the following format:
 {
-  "suspect": "string (must be from available suspects)",
-  "weapon": "string (must be from available weapons)",
-  "room": "string (must be from available rooms)",
-  "reasoning": "string explaining your strategy"
-}
-Only return the JSON following the format above, nothing else.`;
+  "suspect": "string (must be an available suspect, not yourself)",
+  "weapon": "string (must be an available weapon)",
+  "room": "string (must be your current room: ${agent.location})",
+  "reasoning": "string (explain your strategy and deduction process briefly)"
+}`;
 
-      const completion = await openai.chat.completions.create({
+      loggingPayload.input = {
+        prompt: userMessage,
+        gameState: {
+          knownCards: Array.from(agent.cards),
+          currentTurn: gameState.currentTurn,
+          location: agent.location,
+          availableSuspects: gameState.availableSuspects.filter(s => s !== agent.name),
+          availableWeapons: gameState.availableWeapons,
+          memoryState
+        }
+      };
+      
+      logger.info(`[LLM Debug] Attempting cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion...`);
+      console.log(`[LLM Debug] Attempting cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion...`);
+
+      // Check if the model supports response_format (Command R and newer)
+      const supportsJsonResponseFormat = agent.model.startsWith('command-r'); // Simple check for Command R models
+
+      const apiParams = {
         model: agent.model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a strategic Cluedo/Clue player. Make logical deductions and strategic suggestions."
-          },
-          { role: "user", content: prompt }
-        ]
-      });
+        message: userMessage,
+        temperature: 0.3,
+      };
 
-      const response = completion.choices[0].message.content;
-      
-      // Log the interaction
-      await LoggingService.logLLMInteraction({
-        type: 'suggestion',
-        agent: agent.name,
-        model: agent.model,
-        input: {
-          prompt,
-          gameState: {
-            knownCards: Array.from(agent.cards),
-            currentTurn: gameState.currentTurn,
-            recentHistory: gameState.recentHistory
-          }
-        },
-        output: response
-      });
+      if (supportsJsonResponseFormat) {
+        apiParams.response_format = { type: "json_object" };
+        logger.info(`[LLM Debug] Using response_format: json_object for model ${agent.model}`);
+      } else {
+        logger.info(`[LLM Debug] Model ${agent.model} does not support response_format: json_object. Relying on prompt.`);
+      }
 
-      // Parse and validate with schema
-      const parsedResult = extractJSON(response);
-      if (!parsedResult) {
-        throw new Error('Failed to parse suggestion response');
+      const completion = await cohere.chat(apiParams);
+      
+      logger.info(`[LLM Debug] cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion completed.`);
+      console.log(`[LLM Debug] cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion completed.`);
+
+      const responseText = completion.text;
+      loggingPayload.output = responseText;
+
+      let parsedResult;
+      try {
+        // If response_format wasn't used, the text might contain markdown or just plain JSON
+        // Use extractJSON which handles both cases
+        if (!supportsJsonResponseFormat) {
+          parsedResult = extractJSON(responseText);
+        } else {
+          // If response_format was used, the API should return clean JSON text
+          parsedResult = JSON.parse(responseText);
+        }
+
+        if (!parsedResult) { // Check if parsing/extraction failed
+            throw new Error('Failed to extract or parse JSON from response.');
+        }
+        loggingPayload.parsedOutput = parsedResult;
+
+      } catch (parseError) {
+        logger.error('Failed to parse suggestion JSON response from Cohere:', { error: parseError.message, responseText, model: agent.model });
+        loggingPayload.error = `JSON Parsing Error: ${parseError.message}`;
+        loggingPayload.validationStatus = 'failed_parsing';
+        throw new Error('Failed to parse suggestion response as JSON.');
+      }
+
+      if (!parsedResult || typeof parsedResult !== 'object' || !parsedResult.suspect || !parsedResult.weapon || !parsedResult.room || !parsedResult.reasoning) {
+          logger.error('Invalid structure in suggestion JSON response:', { parsedResult });
+          loggingPayload.error = 'Invalid JSON structure received';
+          loggingPayload.validationStatus = 'failed_validation';
+          throw new Error('Invalid JSON structure in suggestion response.');
       }
       
-      // Validate against schema
-      const validate = ajv.compile(suggestionSchema);
-      if (!validate(parsedResult)) {
-        console.error('Suggestion validation errors:', validate.errors);
-        throw new Error('Invalid suggestion format: ' + JSON.stringify(validate.errors));
+      if (parsedResult.room !== agent.location) {
+           logger.info(`LLM suggested wrong room (${parsedResult.room}) for agent ${agent.name} at ${agent.location}. Forcing correct room.`);
+           parsedResult.room = agent.location;
+           loggingPayload.validationStatus = 'corrected_room';
+      } else {
+           loggingPayload.validationStatus = 'passed';
       }
-      
-      // Validate that values are from available options
-      if (!gameState.availableSuspects.includes(parsedResult.suspect)) {
-        throw new Error(`Invalid suspect: ${parsedResult.suspect} is not in available suspects`);
-      }
-      if (!gameState.availableWeapons.includes(parsedResult.weapon)) {
-        throw new Error(`Invalid weapon: ${parsedResult.weapon} is not in available weapons`);
-      }
-      if (!gameState.availableRooms.includes(parsedResult.room)) {
-        throw new Error(`Invalid room: ${parsedResult.room} is not in available rooms`);
-      }
+
+      await LoggingService.logLLMInteraction(loggingPayload);
 
       console.timeEnd(`[LLM] ${agent.name} suggestion`);
-      return {
-        suspect: parsedResult.suspect,
-        weapon: parsedResult.weapon,
-        room: parsedResult.room,
-        reasoning: parsedResult.reasoning || 'No reasoning provided'
-      };
+      return parsedResult;
 
     } catch (error) {
+      logger.error(`Error in makeSuggestion for ${agent.name}: ${error.message}`, { stack: error.stack });
       console.timeEnd(`[LLM] ${agent.name} suggestion`);
-      console.error('Suggestion generation failed:', error);
-      // Return a fallback suggestion
-      return {
-        suspect: gameState.availableSuspects[0],
-        weapon: gameState.availableWeapons[0],
-        room: gameState.availableRooms[0],
-        reasoning: 'Error occurred, using fallback suggestion'
-      };
+      
+      loggingPayload.error = error.message;
+      loggingPayload.validationStatus = loggingPayload.validationStatus === 'pending' ? 'failed_api_call' : loggingPayload.validationStatus;
+      await LoggingService.logLLMInteraction(loggingPayload);
+
+      throw new Error(`LLM suggestion failed for ${agent.name}: ${error.message}`);
     }
   }
   
 
+  /**
+   * Updates the agent's memory based on events from the completed turn.
+   *
+   * @param {Agent} agent - The agent whose memory to update
+   * @param {AgentMemory} memory - The agent's current memory object
+   * @param {Array<string>} turnEvents - List of events that occurred during the turn
+   * @returns {Promise<AgentMemory>} The updated memory object
+   */
   static async updateMemory(agent, memory, turnEvents) {
+    if (!turnEvents || turnEvents.length === 0) {
+      logger.info(`No turn events for ${agent.name}, skipping memory update.`);
+      return memory; // No update needed
+    }
+    
     console.time(`[LLM] ${agent.name} memory update`);
+    const loggingPayload = {
+      type: 'memory_update',
+      agent: agent.name,
+      model: agent.model,
+      input: {},
+      output: null,
+      error: null
+    };
+
     try {
-      const prompt = `As ${agent.name}, analyze this complete turn:
+      // Check if memory has formatMemoryForLLM method
+      if (typeof memory.formatMemoryForLLM !== 'function') {
+        // Simple fallback if memory object doesn't have expected methods
+        const memoryState = {
+          knownInformation: memory.knownCards || {},
+          currentDeductions: memory.currentMemory || "No current deductions available.",
+          turnHistory: [] // Empty turn history
+        };
+        
+        const turnEventsString = Array.isArray(turnEvents) ? turnEvents.join('\\n') : String(turnEvents);
 
-Turn Number: ${turnEvents.turnNumber}
-Active Agent: ${turnEvents.activeAgent}
+        const userMessage = `You are ${agent.name}, playing Cluedo. Update your deductions based on the latest turn events. 
+Your current knowledge:
+Known cards held: ${Array.from(agent.cards).join(', ') || 'None'}
+Current Memory: ${JSON.stringify(memoryState, null, 2)}
 
-Suggestion Made:
-${turnEvents.suggestion ? 
-  `${turnEvents.activeAgent} suggested ${turnEvents.suggestion.suspect} in the ${turnEvents.suggestion.room} with the ${turnEvents.suggestion.weapon}` 
-  : 'No suggestion made'}
+Events from the last turn:
+${turnEventsString}
 
-Challenge Result:
-${turnEvents.challengeResult?.canChallenge ? 
-  `${turnEvents.challengeResult.challengingAgent} showed a card to disprove the suggestion` 
-  : 'No successful challenge'}
+Analyze these events and update your deductions. What new facts are confirmed? What possibilities are eliminated? What seems more or less likely? Focus only on NEW insights derived *directly* from the turn events in the context of your existing knowledge. Be concise.
 
-Current Memory State: ${memory}
+Respond with a short text summary of your new deductions or updated beliefs.`;
 
-Update your memory with all this turn's information...`;
+        loggingPayload.input = {
+            prompt: userMessage,
+            turnEvents: turnEventsString,
+            initialMemoryState: memoryState
+        };
 
-      // Get LLM's interpretation and deductions
-      const completion = await openai.chat.completions.create({
+        const completion = await cohere.chat({
+          model: agent.model,
+          message: userMessage,
+          temperature: 0.2,
+        });
+
+        const llmDeductions = completion.text;
+        loggingPayload.output = llmDeductions;
+
+        // Since we don't have a memory.update method, just log the deductions
+        logger.info(`Agent ${agent.name} memory update deductions: ${llmDeductions}`);
+        
+        await LoggingService.logLLMInteraction(loggingPayload);
+        console.timeEnd(`[LLM] ${agent.name} memory update`);
+        
+        // Since we can't update memory properly, return the original
+        return memory;
+      }
+      
+      // Original implementation - used when memory has proper methods
+      const memoryState = await memory.formatMemoryForLLM();
+      const turnEventsString = Array.isArray(turnEvents) ? turnEvents.join('\\n') : String(turnEvents);
+
+      const userMessage = `You are ${agent.name}, playing Cluedo. Update your deductions based on the latest turn events. 
+Your current knowledge:
+Known cards held: ${Array.from(agent.cards).join(', ') || 'None'}
+Known Information: ${JSON.stringify(memoryState.knownInformation, null, 2)}
+Current Deductions: ${memoryState.currentDeductions}
+
+Events from the last turn:
+${turnEventsString}
+
+Analyze these events and update your deductions. What new facts are confirmed? What possibilities are eliminated? What seems more or less likely? Focus only on NEW insights derived *directly* from the turn events in the context of your existing knowledge. Be concise.
+
+Respond with a short text summary of your new deductions or updated beliefs.`;
+
+      loggingPayload.input = {
+          prompt: userMessage,
+          turnEvents: turnEventsString,
+          initialMemoryState: memoryState
+      };
+
+      const completion = await cohere.chat({
         model: agent.model,
-        messages: [
-          { role: "system", content: "You are a Cluedo player updating your memory." },
-          { role: "user", content: prompt }
-        ]
+        message: userMessage,
+        temperature: 0.2,
       });
 
-      // Add null check for completion data
-      if (!completion?.choices?.[0]?.message?.content) {
-        console.error('Invalid response format from API');
-        return memory; // Return original memory if update fails
+      const llmDeductions = completion.text;
+      loggingPayload.output = llmDeductions;
+
+      if (!llmDeductions || typeof llmDeductions !== 'string') {
+        logger.warn(`Invalid or empty response from LLM for memory update for ${agent.name}. Skipping update.`);
+        loggingPayload.error = 'Invalid or empty response received';
+        // Don't throw, just skip the update
+      } else {
+        // Pass the raw LLM deductions text to the memory update function
+        if (typeof memory.update === 'function') {
+          await memory.update(turnEventsString, llmDeductions);
+        } else {
+          // If memory.update doesn't exist, at least log the deductions
+          logger.info(`Agent ${agent.name} memory update deductions: ${llmDeductions}`);
+        }
       }
+      
+      await LoggingService.logLLMInteraction(loggingPayload);
 
-      const response = completion.choices[0].message.content;
+      console.timeEnd(`[LLM] ${agent.name} memory update`);
+      return memory; // Return the potentially updated memory object
 
-      // Log the interaction
-      await LoggingService.logLLMInteraction({
-        type: 'memory_update',
+    } catch (error) {
+      logger.error(`Error in updateMemory for ${agent.name}: ${error.message}`, { stack: error.stack });
+      console.timeEnd(`[LLM] ${agent.name} memory update`);
+
+      loggingPayload.error = error.message;
+      await LoggingService.logLLMInteraction(loggingPayload); // Log failure
+      
+      // Return original memory on error
+      return memory; 
+    }
+  }
+
+  /**
+   * Evaluates which card an agent should show to challenge a suggestion, if any.
+   *
+   * @param {Agent} agent - The agent being challenged
+   * @param {Object} suggestion - The suggestion being challenged {suspect, weapon, room}
+   * @param {Array<string>} cards - Agent's cards that match the suggestion elements
+   * @returns {Promise<{cardToShow: string|null, reasoning: string}>} The card to show (or null) and reasoning.
+   */
+  static async evaluateChallenge(agent, suggestion, cards) {
+    // Ensure cards is always an array
+    const cardArray = Array.isArray(cards) ? cards : (cards ? [cards] : []);
+    
+    if (!cardArray || cardArray.length === 0) {
+        logger.info(`Agent ${agent.name} has no cards matching the suggestion.`);
+        return { cardToShow: null, reasoning: "No matching cards held." };
+    }
+
+    console.time(`[LLM] ${agent.name} evaluate challenge`);
+    const loggingPayload = {
+        type: 'evaluate_challenge',
         agent: agent.name,
         model: agent.model,
-        turn: turnEvents.turnNumber,
-        input: {
-          prompt,
-          currentMemory: memory,
-          turnEvents
-        },
-        output: response
-      });
+        input: {},
+        output: null,
+        error: null,
+        parsedOutput: null,
+        validationStatus: 'pending'
+    };
 
-      console.timeEnd(`[LLM] ${agent.name} memory update`);
-      return response;
-    } catch (error) {
-      console.timeEnd(`[LLM] ${agent.name} memory update`);
-      console.error(`LLM memory update error for ${agent.name}:`, error);
-      throw error;
-    }
-  }
-
-  static async evaluateChallenge(agent, suggestion, cards) {
-    const timeLabel = `[LLM] ${agent.name} challenge evaluation`;
-    console.time(timeLabel);
     try {
-      const matchingCards = Array.from(cards).filter(card => 
-        card === suggestion.suspect ||
-        card === suggestion.weapon ||
-        card === suggestion.room
-      );
+        // Replace the userMessage definition to ensure correct interpolation
+        const userMessage = `You are ${agent.name}, playing Cluedo. You have been challenged based on the suggestion: ${suggestion.suspect} in the ${suggestion.room} with the ${suggestion.weapon}.
 
-      if (matchingCards.length === 0) {
-        console.timeEnd(timeLabel);
-        return {
-          canChallenge: false,
-          cardToShow: null
-        };
-      }
+You hold the following card(s) that match the suggestion: ${cardArray.join(', ')}. 
 
-      // If only one matching card, show that
-      if (matchingCards.length === 1) {
-        console.timeEnd(timeLabel);
-        return {
-          canChallenge: true,
-          cardToShow: matchingCards[0]
-        };
-      }
+Which card should you show? Consider:
+1. Show only ONE card.
+2. Prioritize showing a card that reveals the least information about the remaining solution (e.g., if you have multiple matching cards, maybe show one that others might already suspect you have, or one related to a less critical category based on your deductions).
+3. If you only have one matching card, you must show it.
 
-      // If multiple matching cards, let LLM choose strategically
-      const prompt = `As ${agent.name}, you need to choose which card to show to disprove a suggestion.
-You have these matching cards: ${matchingCards.join(', ')}
-The suggestion was: ${suggestion.suspect} in the ${suggestion.room} with the ${suggestion.weapon}
-
-Choose one card to show based on strategic value.
-Format response as JSON:
+Respond ONLY with a JSON object in the following format:
 {
-  "cardToShow": "string (must be one of your matching cards)"
-}
+  "cardToShow": "string (the name of the card to show, must be one of: ${cardArray.join(', ')})",
+  "reasoning": "string (briefly explain your choice)"
+}`; // Ensure both interpolations use .join(', ')
 
-Only return the JSON following the format above, nothing else.`;
-
-      const completion = await openai.chat.completions.create({
-        model: agent.model,
-        messages: [
-          { 
-            role: "system", 
-            content: "You are a strategic Cluedo/Clue player choosing which card to show to disprove a suggestion."
-          },
-          { role: "user", content: prompt }
-        ]
-      });
-
-      const response = completion.choices[0].message.content;
-      const result = extractJSON(response);
-
-      if (!result || !matchingCards.includes(result.cardToShow)) {
-        console.timeEnd(timeLabel);
-        return {
-          canChallenge: true,
-          cardToShow: matchingCards[0]  // Fallback to first matching card if LLM response is invalid
+        loggingPayload.input = {
+            prompt: userMessage,
+            agentName: agent.name,
+            suggestion,
+            matchingCards: cardArray
         };
-      }
 
-      console.timeEnd(timeLabel);
-      return {
-        canChallenge: true,
-        cardToShow: result.cardToShow
-      };
+        // Check if the model supports response_format (Command R and newer)
+        const supportsJsonResponseFormat = agent.model.startsWith('command-r');
+
+        const apiParams = {
+            model: agent.model,
+            message: userMessage,
+            temperature: 0.2,
+        };
+
+        if (supportsJsonResponseFormat) {
+            apiParams.response_format = { type: "json_object" };
+            logger.info(`[LLM Debug] Using response_format: json_object for model ${agent.model} in evaluateChallenge`);
+        } else {
+            logger.info(`[LLM Debug] Model ${agent.model} does not support response_format: json_object in evaluateChallenge. Relying on prompt.`);
+        }
+
+        let completion;
+        try {
+            console.log(`[LLMService DEBUG] Calling cohere.chat for evaluateChallenge with params:`, JSON.stringify(apiParams, null, 2)); // Log params
+            completion = await cohere.chat(apiParams);
+            console.log(`[LLMService DEBUG] cohere.chat call for evaluateChallenge completed successfully.`);
+        } catch (apiError) {
+            logger.error(`API call failed specifically within evaluateChallenge for ${agent.name} (Model: ${agent.model}):`, { 
+                message: apiError.message, 
+                statusCode: apiError.statusCode, // Log status code if available
+                body: apiError.body, // Log body if available
+                stack: apiError.stack 
+            });
+            loggingPayload.error = `API Call Error: ${apiError.message}`;
+            loggingPayload.validationStatus = 'failed_api_call';
+            // Ensure the outer try...catch knows an error occurred
+            throw apiError; // Re-throw the error to be caught by the outer handler which returns null card
+        }
+
+        const responseText = completion.text;
+        loggingPayload.output = responseText;
+        console.log(`[LLMService DEBUG] Raw response from ${agent.name} (${agent.model}) evaluateChallenge:`, responseText);
+
+        let parsedResult;
+        try {
+            // If response_format wasn't used, the text might contain markdown or just plain JSON
+            // Use extractJSON which handles both cases
+            if (!supportsJsonResponseFormat) {
+                parsedResult = extractJSON(responseText);
+            } else {
+                // If response_format was used, the API should return clean JSON text
+                parsedResult = JSON.parse(responseText);
+            }
+
+            if (!parsedResult) { // Check if parsing/extraction failed
+                throw new Error('Failed to extract or parse JSON from response.');
+            }
+            loggingPayload.parsedOutput = parsedResult;
+        } catch (parseError) {
+            logger.error('Failed to parse challenge JSON response from Cohere:', { error: parseError.message, responseText });
+            loggingPayload.error = `JSON Parsing Error: ${parseError.message}`;
+            loggingPayload.validationStatus = 'failed_parsing';
+            // Fallback: Return null if parsing fails
+            logger.error('Fallback in evaluateChallenge due to parsing error. Returning null card.');
+            return { cardToShow: null, reasoning: "LLM response parsing failed." };
+        }
+
+        // Basic validation
+        if (!parsedResult || typeof parsedResult !== 'object' || typeof parsedResult.cardToShow !== 'string' || typeof parsedResult.reasoning !== 'string') {
+            logger.error('Invalid structure in challenge JSON response:', { parsedResult });
+            loggingPayload.error = 'Invalid JSON structure received';
+            loggingPayload.validationStatus = 'failed_validation';
+            // Fallback: Show the first card - Revisit: Should this also return null?
+            logger.error('Fallback in evaluateChallenge due to invalid structure. Returning first card.'); 
+            return { cardToShow: cardArray[0], reasoning: "Invalid JSON structure received, showing first available card." };
+        }
+        
+        // Validate the chosen card is one the agent actually has and matches
+        if (!cardArray.includes(parsedResult.cardToShow)) {
+            logger.info(`LLM chose invalid card '${parsedResult.cardToShow}' for challenge. Agent holds: ${cardArray.join(', ')}. Forcing first valid card.`);
+            loggingPayload.error = `Invalid card choice: ${parsedResult.cardToShow}`;
+            loggingPayload.validationStatus = 'corrected_card';
+            parsedResult.cardToShow = cardArray[0]; // Correct to the first valid card
+            parsedResult.reasoning += " (Corrected: Invalid card chosen by LLM)";
+        } else {
+            loggingPayload.validationStatus = 'passed';
+        }
+
+        await LoggingService.logLLMInteraction(loggingPayload);
+
+        console.timeEnd(`[LLM] ${agent.name} evaluate challenge`);
+        return parsedResult;
 
     } catch (error) {
-      console.timeEnd(timeLabel);
-      console.error('Challenge evaluation failed:', error);
-      // Fallback to simple challenge if error occurs
-      const matchingCard = Array.from(cards).find(card => 
-        card === suggestion.suspect ||
-        card === suggestion.weapon ||
-        card === suggestion.room
-      );
-      
-      return {
-        canChallenge: !!matchingCard,
-        cardToShow: matchingCard || null
-      };
+        logger.error(`Error in evaluateChallenge for ${agent.name}: ${error.message}`, { stack: error.stack });
+        console.timeEnd(`[LLM] ${agent.name} evaluate challenge`);
+        
+        loggingPayload.error = error.message;
+        loggingPayload.validationStatus = loggingPayload.validationStatus === 'pending' ? 'failed_api_call' : loggingPayload.validationStatus;
+        await LoggingService.logLLMInteraction(loggingPayload);
+
+        throw new Error(`LLM challenge evaluation failed for ${agent.name}: ${error.message}`);
     }
   }
 
+  /**
+   * Determines if the agent should make an accusation based on its confidence.
+   *
+   * @param {Agent} agent - The agent considering the accusation
+   * @param {Object} gameState - Current game state information
+   * @returns {Promise<Object>} Accusation decision object including boolean `shouldAccuse`, 
+   *                            the `accusation` {suspect, weapon, room}, 
+   *                            `confidence` {suspect, weapon, room}, and `reasoning`.
+   */
   static async considerAccusation(agent, gameState) {
-    console.time(`[LLM] ${agent.name} accusation consideration`);
+    console.time(`[LLM] ${agent.name} consider accusation`);
+    const loggingPayload = {
+        type: 'consider_accusation',
+        agent: agent.name,
+        model: agent.model,
+        input: {},
+        output: null,
+        error: null,
+        parsedOutput: null,
+        validationStatus: 'pending'
+    };
+
     try {
       const memoryState = await agent.memory.formatMemoryForLLM();
       
-      const prompt = `As ${agent.name}, analyze the game state:
-Known cards: ${Array.from(agent.cards).join(', ')}
-Memory state: ${JSON.stringify(memoryState)}
+      const userMessage = `You are ${agent.name}, playing Cluedo. Analyze your memory and decide if you should make a final accusation.
 
-Based on your suggestion this turn and the challenge results:
-1. What cards were shown/not shown?
-2. What can you deduce about card locations?
-3. How confident are you about the solution?
+Your current knowledge:
+Known cards held: ${Array.from(agent.cards).join(', ') || 'None'}
+Known Information: ${JSON.stringify(memoryState.knownInformation, null, 2)}
+Current Deductions: ${memoryState.currentDeductions}
+Recent Turn History:
+${memoryState.turnHistory.join('\\n')}
 
-Should you make an accusation? Consider:
-1. Confidence in each element (suspect, weapon, room)
-2. Risk of being eliminated if wrong
-3. Information gained from your suggestion and the challenge
+Consider the following:
+1. How certain are you about the suspect, weapon, AND room?
+2. Accusing incorrectly means you lose the game immediately.
+3. Only accuse if you are highly confident (e.g., >90-95% certainty) in all three elements.
 
-Format response as JSON:
+Respond ONLY with a JSON object in the following format. 
+- If you decide NOT to accuse, set \"shouldAccuse\" to false and provide nulls for the accusation details, but still estimate your confidence levels.
+- If you decide TO accuse, set \"shouldAccuse\" to true and fill in the suspect, weapon, and room you are accusing.
+
 {
   "shouldAccuse": boolean,
   "accusation": {
-    "suspect": "string",
-    "weapon": "string",
-    "room": "string"
+    "suspect": string | null, // (Provide value if shouldAccuse is true, otherwise null)
+    "weapon": string | null,  // (Provide value if shouldAccuse is true, otherwise null)
+    "room": string | null     // (Provide value if shouldAccuse is true, otherwise null)
   },
-  "confidence": {
-    "suspect": number (0-1),
-    "weapon": number (0-1),
-    "room": number (0-1)
+  "confidence": { // Estimate your confidence (0.0 to 1.0) for each element REGARDLESS of accusation decision
+    "suspect": number (0.0-1.0),
+    "weapon": number (0.0-1.0),
+    "room": number (0.0-1.0)
   },
-  "reasoning": "string"
-}
+  "reasoning": string (Explain your decision and confidence assessment briefly)
+}`;
 
-Only return the JSON following the format above, nothing else.`;
+      loggingPayload.input = {
+          prompt: userMessage,
+          agentName: agent.name,
+          memoryState // Log memory state used for decision
+      };
 
-      const completion = await openai.chat.completions.create({
+      console.log(`[LLMService DEBUG] Attempting cohere.chat for ${agent.name} (Model: ${agent.model}) accusation...`);
+
+      // Check if the model supports response_format (Command R and newer)
+      const supportsJsonResponseFormat = agent.model.startsWith('command-r');
+
+      const apiParams = {
         model: agent.model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a strategic Cluedo/Clue player deciding whether to make an accusation."
-          },
-          { role: "user", content: prompt }
-        ]
-      });
+        message: userMessage,
+        temperature: 0.1,
+      };
 
-      const response = completion.choices[0].message.content;
-      const result = extractJSON(response);
-
-      if (!result) {
-        throw new Error('Failed to parse accusation response');
+      if (supportsJsonResponseFormat) {
+        apiParams.response_format = { type: "json_object" };
+        logger.info(`[LLM Debug] Using response_format: json_object for model ${agent.model} in considerAccusation`);
+      } else {
+        logger.info(`[LLM Debug] Model ${agent.model} does not support response_format: json_object in considerAccusation. Relying on prompt.`);
       }
 
-      console.timeEnd(`[LLM] ${agent.name} accusation consideration`);
-      return result;
+      const completion = await cohere.chat(apiParams);
+      
+      console.log(`[LLMService DEBUG] cohere.chat completed for ${agent.name} (Model: ${agent.model}) accusation.`);
+
+      const responseText = completion.text;
+      loggingPayload.output = responseText;
+
+      // Use safeParseJSON which includes schema validation and confidence normalization
+      const { valid, data: parsedResult, error: validationError } = safeParseJSON(responseText, accusationSchema);
+
+      if (!valid) {
+        logger.error('Accusation response failed validation:', { validationError, responseText });
+        loggingPayload.error = `Validation Failed: ${JSON.stringify(validationError)}`;
+        loggingPayload.validationStatus = 'failed_validation';
+        // Fallback: Do not accuse if validation fails
+        return {
+          shouldAccuse: false,
+          accusation: { suspect: null, weapon: null, room: null },
+          confidence: { suspect: 0, weapon: 0, room: 0 },
+          reasoning: "LLM response failed validation, choosing not to accuse."
+        };
+      }
+
+      loggingPayload.parsedOutput = parsedResult; // Log the validated and normalized data
+      loggingPayload.validationStatus = 'passed';
+      await LoggingService.logLLMInteraction(loggingPayload);
+
+      console.timeEnd(`[LLM] ${agent.name} consider accusation`);
+      return parsedResult;
 
     } catch (error) {
-      console.timeEnd(`[LLM] ${agent.name} accusation consideration`);
-      console.error('Accusation consideration failed:', error);
+      logger.error(`Error in considerAccusation for ${agent.name}: ${error.message}`, { stack: error.stack });
+      console.timeEnd(`[LLM] ${agent.name} consider accusation`);
+
+      loggingPayload.error = error.message;
+      loggingPayload.validationStatus = loggingPayload.validationStatus === 'pending' ? 'failed_api_call' : loggingPayload.validationStatus;
+      await LoggingService.logLLMInteraction(loggingPayload);
+      
+      // Fallback strategy on API error: Do not accuse
+      logger.info(`LLM considerAccusation failed for ${agent.name}. Defaulting to not accusing.`);
       return {
         shouldAccuse: false,
         accusation: { suspect: null, weapon: null, room: null },
         confidence: { suspect: 0, weapon: 0, room: 0 },
-        reasoning: 'Error in accusation consideration'
+        reasoning: "LLM API error, choosing not to accuse."
       };
     }
   }
-} 
+}
