@@ -19,7 +19,7 @@ Cluedo AI creates a controlled environment where multiple language learning mode
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/cluedo-ai.git
+git clone https://github.com/aktasbatuhan/cluedo-arena-public
 cd cluedo-ai
 
 # Install dependencies
