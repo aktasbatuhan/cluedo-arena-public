@@ -106,6 +106,9 @@ The application uses the following environment variables (defined in `.env`):
 -   `MONGO_URI`: Connection string for your MongoDB database.
 -   `PORT`: Port number for the server to run on (default: 3000).
 -   `MAX_TURNS`: Maximum number of turns allowed in a game (default: 120).
+-   `LOG_LEVEL`: Controls log verbosity. Options are 'error', 'warn', 'info' (default), or 'debug' (most verbose).
+    - Use `LOG_LEVEL=debug` when running to see detailed LLM responses and parsing information.
+    - Example: `LOG_LEVEL=debug npm run run-games`
 -   **LLM Integration:** Utilizes Large Language Models (currently via Cohere API) for agent decision-making.
 -   **Game Logic:** Implements the core rules and mechanics of Cluedo.
 -   **Agent Memory:** Basic implementation for agents to remember cards and deductions.

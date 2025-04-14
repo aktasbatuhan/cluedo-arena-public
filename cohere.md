@@ -6,7 +6,7 @@ import cohere
 co = cohere.ClientV2()
 
 response = co.chat(
-    model="command-a-03-2025",
+    model="command-r-plus-04-2024",
     messages=[{"role": "user", "content": "hello world!"}],
 )
 

@@ -1,5 +1,5 @@
+import { Agent } from './models/Agent.js';
 import { Game } from './models/Game.js';
-import { HumanAgent } from './models/HumanAgent.js';
 
 export async function runGame(game) {
   if (!game) {

@@ -1,5 +1,6 @@
 import { Memory } from './Memory.js';
 import { LLMService } from '../services/llm.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Represents an AI agent in the Cluedo game.
@@ -122,13 +123,13 @@ export class Agent {
     try {
       // Ensure game reference exists
       if (!this.game) {
-        console.error(`Game reference missing for ${this.name}`);
+        logger.error(`Game reference missing for ${this.name}`);
         throw new Error('Game reference not set');
       }
       
-      console.log(`[DEBUG] Formatting memory for ${this.name} accusation consideration...`);
+      logger.debug(`Formatting memory for ${this.name} accusation consideration...`);
       const memoryState = await this.memory.formatMemoryForLLM();
-      console.log(`[DEBUG] Memory formatted for ${this.name}.`);
+      logger.debug(`Memory formatted for ${this.name}.`);
 
       const gameState = {
         currentTurn: this.game.currentTurn,
@@ -136,13 +137,13 @@ export class Agent {
         memory: memoryState
       };
       
-      console.log(`[DEBUG] Calling LLMService.considerAccusation for ${this.name} (Model: ${this.model})...`);
+      logger.debug(`Calling LLMService.considerAccusation for ${this.name} (Model: ${this.model})...`);
       const result = await LLMService.considerAccusation(this, gameState);
-      console.log(`[DEBUG] LLMService.considerAccusation completed for ${this.name}.`);
+      logger.debug(`LLMService.considerAccusation completed for ${this.name}.`);
       return result;
 
     } catch (error) {
-      console.error(`Accusation consideration failed for ${this.name}:`, error);
+      logger.error(`Accusation consideration failed for ${this.name}: ${error.message}`);
       return {
         shouldAccuse: false,
         accusation: { suspect: null, weapon: null, room: null },
@@ -154,33 +155,37 @@ export class Agent {
   
 
   /**
-   * Updates the agent's memory with new information from a turn.
+   * Updates the agent's memory with events from the most recent turn.
    * 
-   * This method:
-   * 1. Gets the LLM's interpretation of the turn events
-   * 2. Updates the agent's memory state with new information
-   * 3. Records the turn in memory history
-   * 
-   * @param {Object} turnEvents - Events from the current turn
-   * @returns {Promise<void>}
+   * @param {Array} turnEvents - Array of events from the most recent turn
+   * @returns {Promise<{memory: Memory, deducedCards: Array<string>}>} Updated memory and array of deduced cards
    */
   async updateMemory(turnEvents) {
     try {
-      // Get LLM's interpretation of the turn
-      const updatedMemory = await LLMService.updateMemory(
-        this,
-        this.memory.currentMemory,
-        turnEvents
-      );
-
-      // Update memory state
-      this.memory.currentMemory = updatedMemory;
+      // Log the turnEvents received by the agent before calling the service
+      logger.debugObj(`[Agent.js Debug - ${this.name}] Received turnEvents for LLMService:`, turnEvents);
       
-      // Update memory with turn events (this now handles history management internally)
-      await this.memory.updateMemory(turnEvents);
+      // Delegate to LLMService for the actual update logic
+      const updateResult = await LLMService.updateMemory(this, this.memory, turnEvents);
+      
+      // IMPORTANT: Agent.js needs to handle the *return value* from LLMService
+      // The LLMService returns { deducedCards, summary } OR the original memory object on skip.
+      
+      // If LLMService skipped (returned original memory), we need to return the expected structure.
+      if (updateResult === this.memory) { // Check if it returned the original memory object
+          logger.info(`LLMService skipped memory update for ${this.name} (likely empty turnEvents), returning empty result.`);
+          return { deducedCards: [], summary: '(Memory update skipped by LLMService)' }; 
+      } 
+      
+      // Otherwise, LLMService returned { deducedCards, summary }
+      // The LLMService.updateMemory function internally calls this.memory.update if it exists.
+
+      return updateResult; // Return the { deducedCards, summary } object
 
     } catch (error) {
-      console.error(`Failed to update ${this.name}'s memory:`, error);
+      logger.error(`Error during agent memory update for ${this.name}: ${error.message}`);
+      // Return empty results on error
+      return { deducedCards: [], summary: '(Error in agent memory update)' };
     }
   }
 
@@ -229,11 +234,11 @@ export class Agent {
     // Or potentially move to an adjacent room in a full implementation.
     if (!this.location) {
       this.location = availableRooms[Math.floor(Math.random() * availableRooms.length)];
-      console.log(`${this.name} assigned starting location: ${this.location}`); // Log initial assignment
+      logger.debug(`${this.name} assigned starting location: ${this.location}`);
     } else {
       // In a full implementation, add logic for moving to adjacent rooms.
       // For now, the agent stays put after the initial assignment.
-      console.log(`${this.name} stays in location: ${this.location}`);
+      logger.debug(`${this.name} stays in location: ${this.location}`);
     }
   }
 } 

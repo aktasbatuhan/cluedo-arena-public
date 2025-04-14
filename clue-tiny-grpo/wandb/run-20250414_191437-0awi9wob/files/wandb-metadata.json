@@ -1,0 +1,88 @@
+{
+    "os": "Linux-5.15.0-1081-aws-x86_64-with-glibc2.31",
+    "python": "3.10.10",
+    "heartbeatAt": "2025-04-14T19:14:37.367681",
+    "startedAt": "2025-04-14T19:14:37.054795",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/teamspace/studios/this_studio/clue-tiny-grpo/train.py",
+    "codePathLocal": "train.py",
+    "codePath": "train.py",
+    "git": {
+        "remote": "https://github.com/aktasbatuhan/clue-tiny-grpo.git",
+        "commit": "c9abeadc1e66cf57431983c40d602b317bd93624"
+    },
+    "email": null,
+    "root": "/teamspace/studios/this_studio/clue-tiny-grpo",
+    "host": "ip-10-192-12-217",
+    "username": "zeus",
+    "executable": "/home/zeus/miniconda3/envs/cloudspace/bin/python",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 2914.52775,
+        "min": 0.0,
+        "max": 0.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2499.996,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3163.085,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3159.592,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2499.996,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3149.829,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2499.996,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2499.996,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3156.555,
+            "min": 0.0,
+            "max": 0.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 411.43750762939453,
+            "used": 33.363059997558594
+        }
+    },
+    "gpu": "Tesla T4",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "Tesla T4",
+            "memory_total": 16106127360
+        }
+    ],
+    "memory": {
+        "total": 30.887203216552734
+    }
+}

@@ -23,12 +23,12 @@ const __dirname = dirname(__filename);
  * @type {Array<string>}
  */
 export const MODEL_LIST = [
-  'command-a-03-2025',          
-  'command-r7b-12-2024',     
-  'command-r-plus-04-2024',      
-  'command-r-08-2024',          
-  'command-r-plus',     
-  'c4ai-aya-expanse-32b'       
+  'command-r-plus-04-2024',          
+  'command-a-03-2025',     
+  'c4ai-aya-expanse-32b',      
+  'command-r-plus-04-2024',          
+  'command-a-03-2025',     
+  'c4ai-aya-expanse-32b'     
 ];
 
 // Initialize Cohere client
@@ -88,9 +88,12 @@ const accusationSchema = {
 // Replace with this custom JSON parser:
 function extractJSON(response) {
   try {
-    // Handle JSON wrapped in markdown code blocks
+    // Check if the response contains markdown code blocks
     const jsonMatch = response.match(/```(?:json)?\n([\s\S]*?)\n```/);
-    if (jsonMatch) return JSON.parse(jsonMatch[1]);
+    if (jsonMatch) {
+      logger.info('Found JSON wrapped in markdown code blocks, extracting content');
+      return JSON.parse(jsonMatch[1]);
+    }
     
     // Handle plain JSON
     return JSON.parse(response);
@@ -152,18 +155,6 @@ export async function saveGameResult(result) {
   }
 }
 
-/**
- * Service for interacting with Language Learning Models via OpenRouter.
- * 
- * This service provides methods for LLM-powered game actions:
- * - Making suggestions
- * - Evaluating challenges
- * - Considering accusations
- * - Updating agent memory
- * 
- * Each method handles model-specific prompting, response validation,
- * and error handling to ensure robust AI agent behavior.
- */
 export class LLMService {
   /**
    * Generates a strategic suggestion for an agent during their turn.
@@ -203,15 +194,17 @@ Recent Turn History:
 ${memoryState.turnHistory.join('\n')}
 
 Make a strategic suggestion considering:
-1. Your known cards and deductions (don't suggest cards you hold).
+1. Your known cards and deductions.
 2. Previous suggestions and their outcomes (from Turn History).
-3. Information revealed by others.
+3. Information revealed by other players.
 4. Your current room (${agent.location}) - you MUST suggest this room.
 5. Choose a suspect (not yourself) and a weapon that seem most likely based on your deductions, or that would gather the most information.
 
-Respond ONLY with a JSON object in the following format:
+Respond ONLY with a JSON object in the following format.
+IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.
+
 {
-  "suspect": "string (must be an available suspect, not yourself)",
+  "suspect": "string (must be an available suspect)",
   "weapon": "string (must be an available weapon)",
   "room": "string (must be your current room: ${agent.location})",
   "reasoning": "string (explain your strategy and deduction process briefly)"
@@ -219,9 +212,9 @@ Respond ONLY with a JSON object in the following format:
 
       loggingPayload.input = {
         prompt: userMessage,
-        gameState: {
-          knownCards: Array.from(agent.cards),
-          currentTurn: gameState.currentTurn,
+          gameState: {
+            knownCards: Array.from(agent.cards),
+            currentTurn: gameState.currentTurn,
           location: agent.location,
           availableSuspects: gameState.availableSuspects.filter(s => s !== agent.name),
           availableWeapons: gameState.availableWeapons,
@@ -229,8 +222,7 @@ Respond ONLY with a JSON object in the following format:
         }
       };
       
-      logger.info(`[LLM Debug] Attempting cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion...`);
-      console.log(`[LLM Debug] Attempting cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion...`);
+      logger.debug(`Attempting cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion...`);
 
       // Check if the model supports response_format (Command R and newer)
       const supportsJsonResponseFormat = agent.model.startsWith('command-r'); // Simple check for Command R models
@@ -238,7 +230,7 @@ Respond ONLY with a JSON object in the following format:
       const apiParams = {
         model: agent.model,
         message: userMessage,
-        temperature: 0.3,
+        temperature: 0.1,
       };
 
       if (supportsJsonResponseFormat) {
@@ -250,8 +242,7 @@ Respond ONLY with a JSON object in the following format:
 
       const completion = await cohere.chat(apiParams);
       
-      logger.info(`[LLM Debug] cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion completed.`);
-      console.log(`[LLM Debug] cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion completed.`);
+      logger.debug(`cohere.chat call for ${agent.name} (Model: ${agent.model}) suggestion completed.`);
 
       const responseText = completion.text;
       loggingPayload.output = responseText;
@@ -346,7 +337,32 @@ Respond ONLY with a JSON object in the following format:
           turnHistory: [] // Empty turn history
         };
         
-        const turnEventsString = Array.isArray(turnEvents) ? turnEvents.join('\\n') : String(turnEvents);
+        // Format turn events in a more human-readable way
+        const formattedTurnEvents = Array.isArray(turnEvents) ? 
+          turnEvents.map(event => {
+            switch(event.type) {
+              case 'suggestion':
+                return `${event.agent} suggested that ${event.suspect} committed the crime in the ${event.room} with the ${event.weapon}.`;
+              case 'challenge':
+                return event.canChallenge ? 
+                  `${event.challengingAgent} showed a card to ${event.agent} to disprove the suggestion.` :
+                  `${event.challengingAgent} could not disprove the suggestion.`;
+              case 'cardShown':
+                if (event.hiddenInfo) {
+                  // This is for other agents who only know a card was shown but not which one
+                  return `${event.from} showed a card to ${event.to}, but you don't know which one.`;
+                } else if (event.card) {
+                  // This is for the agent who showed the card or the one who received it
+                  return `${event.from} showed the card "${event.card}" to ${event.to}.`;
+                } else {
+                  // Fallback
+                  return `${event.from} showed a card to ${event.to}.`;
+                }
+              default:
+                return JSON.stringify(event);
+            }
+          }).join('\n') : 
+          String(turnEvents);
 
         const userMessage = `You are ${agent.name}, playing Cluedo. Update your deductions based on the latest turn events. 
 Your current knowledge:
@@ -354,40 +370,129 @@ Known cards held: ${Array.from(agent.cards).join(', ') || 'None'}
 Current Memory: ${JSON.stringify(memoryState, null, 2)}
 
 Events from the last turn:
-${turnEventsString}
+${formattedTurnEvents}
 
-Analyze these events and update your deductions. What new facts are confirmed? What possibilities are eliminated? What seems more or less likely? Focus only on NEW insights derived *directly* from the turn events in the context of your existing knowledge. Be concise.
+Analyze these events and update your deductions. What new facts are confirmed? What possibilities are eliminated? What seems more or less likely?
 
-Respond with a short text summary of your new deductions or updated beliefs.`;
+Perform deeper logical reasoning:
+1. If multiple players couldn't disprove a suggestion, none of them have those cards
+2. If certain cards have been shown or deduced as held by players, they can't be in the solution
+3. Track which players have which cards, and use negative evidence as clues but not as definitive proof (when players couldn't challenge)
+4. Consider card counts - if you know 5 out of 6 weapons are held by players, the 6th must be in the solution 
+5. IMPORTANT: Your deductions should build cumulatively on your previous knowledge. Don't forget your earlier deductions!
+
+Think step-by-step to make strong deductions from both positive evidence (cards shown) and negative evidence (inability to challenge). 
+You can make logical deductions, even if they rely on chains of reasoning.
+
+Respond ONLY with a JSON object in the following format.
+IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.
+
+{
+  "summary": "A concise text summary of your new deductions and updated beliefs based on this turn's events",
+  "newly_deduced_held_cards": ["Card Name 1", "Card Name 2", ...] // List only cards that you can now DEFINITELY conclude are held by a player based on this turn's events
+}`;
 
         loggingPayload.input = {
             prompt: userMessage,
-            turnEvents: turnEventsString,
+            turnEvents: formattedTurnEvents,
             initialMemoryState: memoryState
         };
 
-        const completion = await cohere.chat({
+        // Check if the model supports response_format (Command R and newer)
+        const supportsJsonResponseFormat = agent.model.startsWith('command-r');
+
+        const apiParams = {
           model: agent.model,
           message: userMessage,
-          temperature: 0.2,
-        });
+          temperature: 0.1,
+        };
 
-        const llmDeductions = completion.text;
-        loggingPayload.output = llmDeductions;
+        if (supportsJsonResponseFormat) {
+          apiParams.response_format = { type: "json_object" };
+          logger.info(`[LLM Debug] Using response_format: json_object for model ${agent.model} in updateMemory`);
+        } else {
+          logger.info(`[LLM Debug] Model ${agent.model} does not support response_format: json_object in updateMemory. Relying on prompt.`);
+        }
 
+        const completion = await cohere.chat(apiParams);
+
+        const responseText = completion.text;
+        loggingPayload.output = responseText;
+        
+        // TEMPORARY LOG: Show raw response for memory updates
+        logger.debug(`[LLM RAW - ${agent.name} Memory Update]: ${JSON.stringify(responseText)}`);
+
+        // Try to parse as JSON
+        let summary = "";
+        let deducedCards = [];
+        let jsonData = null; // Initialize jsonData
+        try {
+          // If response_format wasn't used, the text might contain markdown or just plain JSON
+          jsonData = supportsJsonResponseFormat ? 
+            JSON.parse(responseText) : 
+            extractJSON(responseText);
+          
+          logger.debugObj(`[LLM Parse Debug - ${agent.name} Memory Update] jsonData:`, jsonData);
+
+          if (jsonData) {
+            summary = jsonData.summary || '(LLM provided JSON but no summary field)'; // Refined default
+            deducedCards = Array.isArray(jsonData.newly_deduced_held_cards) ? 
+              jsonData.newly_deduced_held_cards : [];
+          } else {
+            // If JSON parsing failed or responseText was empty
+            summary = responseText || '(LLM response was empty or parsing failed completely)'; 
+          }
+        } catch (error) {
+          logger.error(`[LLM Parse Error - ${agent.name} Memory Update] Failed to parse JSON: ${error.message}`);
+          logger.debugObj('Response text that failed parsing:', responseText);
+          summary = responseText || '(LLM response invalid, parsing error)'; // Error fallback
+        }
+
+        // Log final values before returning
+        logger.debugObj(`[LLM Return Debug - ${agent.name} Memory Update] Returning:`, { summary, deducedCards }); 
+
+        // Include the extracted deductions in the log
+        loggingPayload.parsedOutput = { summary, deducedCards };
+        
         // Since we don't have a memory.update method, just log the deductions
-        logger.info(`Agent ${agent.name} memory update deductions: ${llmDeductions}`);
+        logger.info(`Agent ${agent.name} memory update deductions: ${summary}`);
         
         await LoggingService.logLLMInteraction(loggingPayload);
         console.timeEnd(`[LLM] ${agent.name} memory update`);
         
-        // Since we can't update memory properly, return the original
-        return memory;
+        // Return ONLY deduced cards AND summary
+        return { deducedCards: deducedCards, summary: summary };
       }
       
       // Original implementation - used when memory has proper methods
       const memoryState = await memory.formatMemoryForLLM();
-      const turnEventsString = Array.isArray(turnEvents) ? turnEvents.join('\\n') : String(turnEvents);
+      
+      // Format turn events in a more human-readable way
+      const formattedTurnEvents = Array.isArray(turnEvents) ? 
+        turnEvents.map(event => {
+          switch(event.type) {
+            case 'suggestion':
+              return `${event.agent} suggested that ${event.suspect} committed the crime in the ${event.room} with the ${event.weapon}.`;
+            case 'challenge':
+              return event.canChallenge ? 
+                `${event.challengingAgent} showed a card to ${event.agent} to disprove the suggestion.` :
+                `${event.challengingAgent} could not disprove the suggestion.`;
+            case 'cardShown':
+              if (event.hiddenInfo) {
+                // This is for other agents who only know a card was shown but not which one
+                return `${event.from} showed a card to ${event.to}, but you don't know which one.`;
+              } else if (event.card) {
+                // This is for the agent who showed the card or the one who received it
+                return `${event.from} showed the card "${event.card}" to ${event.to}.`;
+              } else {
+                // Fallback
+                return `${event.from} showed a card to ${event.to}.`;
+              }
+            default:
+              return JSON.stringify(event);
+          }
+        }).join('\n') : 
+        String(turnEvents);
 
       const userMessage = `You are ${agent.name}, playing Cluedo. Update your deductions based on the latest turn events. 
 Your current knowledge:
@@ -396,45 +501,111 @@ Known Information: ${JSON.stringify(memoryState.knownInformation, null, 2)}
 Current Deductions: ${memoryState.currentDeductions}
 
 Events from the last turn:
-${turnEventsString}
+${formattedTurnEvents}
 
-Analyze these events and update your deductions. What new facts are confirmed? What possibilities are eliminated? What seems more or less likely? Focus only on NEW insights derived *directly* from the turn events in the context of your existing knowledge. Be concise.
+Analyze these events and update your deductions. What new facts are confirmed? What possibilities are eliminated? What seems more or less likely?
 
-Respond with a short text summary of your new deductions or updated beliefs.`;
+Perform deeper logical reasoning:
+1. If multiple players couldn't disprove a suggestion, none of them have those cards
+2. If certain cards have been shown or deduced as held by players, they can't be in the solution
+3. Track which players have which cards, and use negative evidence (when players couldn't challenge)
+4. Consider card counts - if you know 5 out of 6 weapons are held by players, the 6th must be in the solution
+5. IMPORTANT: Your deductions should build cumulatively on your previous knowledge. Don't forget your earlier deductions!
+6. If a player couldn't disprove a suggestion involving X, Y, Z cards, they don't have ANY of those cards
+
+Think step-by-step to make strong deductions from both positive evidence (cards shown) and negative evidence (inability to challenge). 
+Be aggressive in making logical deductions, even if they rely on chains of reasoning.
+
+Respond ONLY with a JSON object in the following format.
+IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.
+
+{
+  "summary": "A concise text summary of your new deductions and updated beliefs based on this turn's events",
+  "newly_deduced_held_cards": ["Card Name 1", "Card Name 2", ...] // List only cards that you can now DEFINITELY conclude are held by a player based on this turn's events
+}`;
 
       loggingPayload.input = {
           prompt: userMessage,
-          turnEvents: turnEventsString,
+          turnEvents: formattedTurnEvents,
           initialMemoryState: memoryState
       };
 
-      const completion = await cohere.chat({
+      // Check if the model supports response_format (Command R and newer)
+      const supportsJsonResponseFormat = agent.model.startsWith('command-r');
+
+      const apiParams = {
         model: agent.model,
         message: userMessage,
-        temperature: 0.2,
-      });
+        temperature: 0.1,
+      };
 
-      const llmDeductions = completion.text;
-      loggingPayload.output = llmDeductions;
+      if (supportsJsonResponseFormat) {
+        apiParams.response_format = { type: "json_object" };
+        logger.info(`[LLM Debug] Using response_format: json_object for model ${agent.model} in updateMemory`);
+      } else {
+        logger.info(`[LLM Debug] Model ${agent.model} does not support response_format: json_object in updateMemory. Relying on prompt.`);
+      }
 
-      if (!llmDeductions || typeof llmDeductions !== 'string') {
+      const completion = await cohere.chat(apiParams);
+
+      const responseText = completion.text;
+      loggingPayload.output = responseText;
+      
+      // TEMPORARY LOG: Show raw response for memory updates
+      logger.debug(`[LLM RAW - ${agent.name} Memory Update]: ${JSON.stringify(responseText)}`);
+
+      // Try to parse as JSON
+      let summary = "";
+      let deducedCards = [];
+      let jsonData = null; // Initialize jsonData
+      try {
+        // If response_format wasn't used, the text might contain markdown or just plain JSON
+        jsonData = supportsJsonResponseFormat ? 
+          JSON.parse(responseText) : 
+          extractJSON(responseText);
+        
+        logger.debugObj(`[LLM Parse Debug - ${agent.name} Memory Update] jsonData:`, jsonData);
+
+        if (jsonData) {
+          summary = jsonData.summary || '(LLM provided JSON but no summary field)'; // Refined default
+          deducedCards = Array.isArray(jsonData.newly_deduced_held_cards) ? 
+            jsonData.newly_deduced_held_cards : [];
+        } else {
+          // If JSON parsing failed or responseText was empty
+          summary = responseText || '(LLM response was empty or parsing failed completely)'; 
+        }
+      } catch (error) {
+        logger.error(`[LLM Parse Error - ${agent.name} Memory Update] Failed to parse JSON: ${error.message}`);
+        logger.debugObj('Response text that failed parsing:', responseText);
+        summary = responseText || '(LLM response invalid, parsing error)'; // Error fallback
+      }
+
+      // Log final values before returning
+      logger.debugObj(`[LLM Return Debug - ${agent.name} Memory Update] Returning:`, { summary, deducedCards }); 
+
+      // Include the extracted deductions in the log
+      loggingPayload.parsedOutput = { summary, deducedCards };
+
+      if (!summary) {
         logger.warn(`Invalid or empty response from LLM for memory update for ${agent.name}. Skipping update.`);
         loggingPayload.error = 'Invalid or empty response received';
         // Don't throw, just skip the update
       } else {
         // Pass the raw LLM deductions text to the memory update function
         if (typeof memory.update === 'function') {
-          await memory.update(turnEventsString, llmDeductions);
+          await memory.update(formattedTurnEvents, summary);
         } else {
           // If memory.update doesn't exist, at least log the deductions
-          logger.info(`Agent ${agent.name} memory update deductions: ${llmDeductions}`);
+          logger.info(`Agent ${agent.name} memory update deductions: ${summary}`);
         }
       }
       
       await LoggingService.logLLMInteraction(loggingPayload);
 
       console.timeEnd(`[LLM] ${agent.name} memory update`);
-      return memory; // Return the potentially updated memory object
+      
+      // Return ONLY deduced cards AND summary
+      return { deducedCards: deducedCards, summary: summary };
 
     } catch (error) {
       logger.error(`Error in updateMemory for ${agent.name}: ${error.message}`, { stack: error.stack });
@@ -443,8 +614,8 @@ Respond with a short text summary of your new deductions or updated beliefs.`;
       loggingPayload.error = error.message;
       await LoggingService.logLLMInteraction(loggingPayload); // Log failure
       
-      // Return original memory on error
-      return memory; 
+      // Return empty deductions/summary on error
+      return { deducedCards: [], summary: "Error during memory update." };
     }
   }
 
@@ -486,9 +657,11 @@ You hold the following card(s) that match the suggestion: ${cardArray.join(', ')
 Which card should you show? Consider:
 1. Show only ONE card.
 2. Prioritize showing a card that reveals the least information about the remaining solution (e.g., if you have multiple matching cards, maybe show one that others might already suspect you have, or one related to a less critical category based on your deductions).
-3. If you only have one matching card, you must show it.
+3. If you have at least one matching card, you must show it.
 
-Respond ONLY with a JSON object in the following format:
+Respond ONLY with a JSON object in the following format.
+IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.
+
 {
   "cardToShow": "string (the name of the card to show, must be one of: ${cardArray.join(', ')})",
   "reasoning": "string (briefly explain your choice)"
@@ -507,7 +680,7 @@ Respond ONLY with a JSON object in the following format:
         const apiParams = {
             model: agent.model,
             message: userMessage,
-            temperature: 0.2,
+            temperature: 0.1,
         };
 
         if (supportsJsonResponseFormat) {
@@ -519,25 +692,31 @@ Respond ONLY with a JSON object in the following format:
 
         let completion;
         try {
-            console.log(`[LLMService DEBUG] Calling cohere.chat for evaluateChallenge with params:`, JSON.stringify(apiParams, null, 2)); // Log params
+            // Debugging call params in evaluateChallenge
+            logger.debugObj(`Calling cohere.chat for evaluateChallenge with params:`, apiParams);
+            
             completion = await cohere.chat(apiParams);
-            console.log(`[LLMService DEBUG] cohere.chat call for evaluateChallenge completed successfully.`);
+            
+            // After completion in evaluateChallenge
+            logger.debug(`cohere.chat call for evaluateChallenge completed successfully.`);
+            
         } catch (apiError) {
             logger.error(`API call failed specifically within evaluateChallenge for ${agent.name} (Model: ${agent.model}):`, { 
-                message: apiError.message, 
-                statusCode: apiError.statusCode, // Log status code if available
-                body: apiError.body, // Log body if available
-                stack: apiError.stack 
+                error: apiError.message
             });
-            loggingPayload.error = `API Call Error: ${apiError.message}`;
-            loggingPayload.validationStatus = 'failed_api_call';
-            // Ensure the outer try...catch knows an error occurred
-            throw apiError; // Re-throw the error to be caught by the outer handler which returns null card
+            
+            // If API call fails, return no-challenge result
+        return {
+                cardToShow: null,
+                reasoning: `Error during API call: ${apiError.message}`
+            };
         }
-
+        
         const responseText = completion.text;
         loggingPayload.output = responseText;
-        console.log(`[LLMService DEBUG] Raw response from ${agent.name} (${agent.model}) evaluateChallenge:`, responseText);
+        
+        // For raw response in evaluateChallenge
+        logger.debug(`Raw response from ${agent.name} (${agent.model}) evaluateChallenge: ${responseText}`);
 
         let parsedResult;
         try {
@@ -638,11 +817,14 @@ ${memoryState.turnHistory.join('\\n')}
 Consider the following:
 1. How certain are you about the suspect, weapon, AND room?
 2. Accusing incorrectly means you lose the game immediately.
-3. Only accuse if you are highly confident (e.g., >90-95% certainty) in all three elements.
+3. Consider making an accusation if your combined confidence across all three elements is high enough.
+4. Balance risk vs. reward - if you wait too long, other players may solve the case first.
 
-Respond ONLY with a JSON object in the following format. 
-- If you decide NOT to accuse, set \"shouldAccuse\" to false and provide nulls for the accusation details, but still estimate your confidence levels.
-- If you decide TO accuse, set \"shouldAccuse\" to true and fill in the suspect, weapon, and room you are accusing.
+Respond ONLY with a JSON object in the following format.
+IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.
+
+- If you decide NOT to accuse, set "shouldAccuse" to false and provide nulls for the accusation details, but still estimate your confidence levels.
+- If you decide TO accuse, set "shouldAccuse" to true and fill in the suspect, weapon, and room you are accusing.
 
 {
   "shouldAccuse": boolean,
@@ -656,7 +838,7 @@ Respond ONLY with a JSON object in the following format.
     "weapon": number (0.0-1.0),
     "room": number (0.0-1.0)
   },
-  "reasoning": string (Explain your decision and confidence assessment briefly)
+  "reasoning": "string (explain why you are making this decision based on your knowledge)"
 }`;
 
       loggingPayload.input = {
@@ -665,7 +847,8 @@ Respond ONLY with a JSON object in the following format.
           memoryState // Log memory state used for decision
       };
 
-      console.log(`[LLMService DEBUG] Attempting cohere.chat for ${agent.name} (Model: ${agent.model}) accusation...`);
+      // For accusation attempts
+      logger.debug(`Attempting cohere.chat for ${agent.name} (Model: ${agent.model}) accusation...`);
 
       // Check if the model supports response_format (Command R and newer)
       const supportsJsonResponseFormat = agent.model.startsWith('command-r');
@@ -685,7 +868,8 @@ Respond ONLY with a JSON object in the following format.
 
       const completion = await cohere.chat(apiParams);
       
-      console.log(`[LLMService DEBUG] cohere.chat completed for ${agent.name} (Model: ${agent.model}) accusation.`);
+      // After accusation completion
+      logger.debug(`cohere.chat completed for ${agent.name} (Model: ${agent.model}) accusation.`);
 
       const responseText = completion.text;
       loggingPayload.output = responseText;
@@ -731,4 +915,4 @@ Respond ONLY with a JSON object in the following format.
       };
     }
   }
-}
+} 
