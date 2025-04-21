@@ -87,7 +87,9 @@ export class Memory {
       turnHistory: this.memoryHistory.slice(-5).map(entry => {
         // Handle both old format turnHistory entries and newer ones with summary
         if (entry.summary) {
-          return `Turn ${entry.turnNumber || '?'}: ${entry.summary.substring(0, 100)}${entry.summary.length > 100 ? '...' : ''}`;
+          // Add safety check for summary type
+          const summary = typeof entry.summary === 'string' ? entry.summary : String(entry.summary || '');
+          return `Turn ${entry.turnNumber || '?'}: ${summary.substring(0, 100)}${summary.length > 100 ? '...' : ''}`;
         } else if (entry.suggestion) {
           return `Turn ${entry.turnNumber}: ${entry.activeAgent} suggested ${entry.suggestion?.suspect}, ${entry.suggestion?.weapon}, ${entry.suggestion?.room}` +
           (entry.challengeResult?.canChallenge ? 
