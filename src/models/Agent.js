@@ -33,6 +33,12 @@ export class Agent {
     // Initialize with known cards
     cards.forEach(card => this.memory.addKnownCard(card));
     
+    // Temporary storage for request IDs from LLMService calls
+    this.lastSuggestionRequestId = null;
+    this.lastMemoryUpdateRequestId = null;
+    this.lastChallengeRequestId = null;
+    this.lastAccusationRequestId = null;
+
     // Validate memory system integrity
     if (typeof this.memory.formatMemoryForLLM !== 'function') {
       throw new Error('Memory system corrupted - missing format method');
@@ -62,15 +68,41 @@ export class Agent {
         this.cards = new Set(this.cards);
       }
 
-      return await LLMService.makeSuggestion(this, validGameState);
+      // Call LLMService, which now returns result + requestId
+      const result = await LLMService.makeSuggestion(this, validGameState);
+      
+      // Store the request ID for this specific action (use nullish coalescing)
+      this.lastSuggestionRequestId = result.requestId ?? null;
+      
+      // Return only the suggestion part (or error if present)
+      if (result.error) {
+          // If LLMService returned a fallback object with an error field
+          return { 
+              suspect: result.suspect, 
+              weapon: result.weapon, 
+              room: result.room, 
+              reasoning: result.reasoning, 
+              error: result.error 
+          };
+      } else {
+          return { 
+              suspect: result.suspect, 
+              weapon: result.weapon, 
+              room: result.room, 
+              reasoning: result.reasoning 
+          };
+      }
+      
     } catch (error) {
-      console.error(`${this.name} failed to make suggestion:`, error);
+      logger.error(`${this.name} agent-level error during makeSuggestion: ${error.message}`, { error });
+      this.lastSuggestionRequestId = null; // Clear ID on error
       // Return fallback suggestion
       return {
-        suspect: validGameState.availableSuspects[0],
-        weapon: validGameState.availableWeapons[0],
-        room: validGameState.availableRooms[0],
-        reasoning: 'Error occurred, using fallback suggestion'
+        suspect: gameState.availableSuspects ? gameState.availableSuspects[0] : 'Miss Scarlet',
+        weapon: gameState.availableWeapons ? gameState.availableWeapons[0] : 'Candlestick',
+        room: this.location || 'Lounge', // Use current location or default
+        reasoning: `Agent error occurred, using fallback suggestion: ${error.message}`,
+        error: error.message
       };
     }
   }
@@ -91,18 +123,25 @@ export class Agent {
       [];
     
     try {
+      // Call LLMService, which returns result + requestId
       const result = await LLMService.evaluateChallenge(this, suggestion, cardsArray);
       
-      // Update memory with challenge result
-      if (result.cardToShow) {
+      // Store the request ID (use nullish coalescing)
+      this.lastChallengeRequestId = result.requestId ?? null;
+      
+      // Update memory with challenge result if successful and card shown
+      if (result.cardToShow && !result.error) {
         this.memory.addKnownCard(result.cardToShow);
       }
       
-      return result;
+      // Return only the challenge result part (or error)
+      return { cardToShow: result.cardToShow, reasoning: result.reasoning, error: result.error || null };
+
     } catch (error) {
-      console.error(`Challenge evaluation failed for ${this.name}:`, error);
+      logger.error(`Agent-level challenge evaluation failed for ${this.name}: ${error.message}`, { error });
+      this.lastChallengeRequestId = null;
       // If evaluation fails, don't show any card
-      return { cardToShow: null, reasoning: "Error in challenge evaluation" };
+      return { cardToShow: null, reasoning: `Agent error in challenge evaluation: ${error.message}`, error: error.message };
     }
   }
 
@@ -138,17 +177,31 @@ export class Agent {
       };
       
       logger.debug(`Calling LLMService.considerAccusation for ${this.name} (Model: ${this.model})...`);
+      // Call LLMService, which returns result + requestId
       const result = await LLMService.considerAccusation(this, gameState);
       logger.debug(`LLMService.considerAccusation completed for ${this.name}.`);
-      return result;
+      
+      // Store request ID (use nullish coalescing)
+      this.lastAccusationRequestId = result.requestId ?? null;
+      
+      // Return only the decision part (or error)
+      return { 
+          shouldAccuse: result.shouldAccuse, 
+          accusation: result.accusation, 
+          confidence: result.confidence, 
+          reasoning: result.reasoning, 
+          error: result.error || null 
+      };
 
     } catch (error) {
-      logger.error(`Accusation consideration failed for ${this.name}: ${error.message}`);
+      logger.error(`Agent-level accusation consideration failed for ${this.name}: ${error.message}`, { error });
+      this.lastAccusationRequestId = null;
       return {
         shouldAccuse: false,
         accusation: { suspect: null, weapon: null, room: null },
         confidence: { suspect: 0, weapon: 0, room: 0 },
-        reasoning: 'Error in accusation consideration'
+        reasoning: `Agent error in accusation consideration: ${error.message}`,
+        error: error.message
       };
     }
   }
@@ -165,27 +218,29 @@ export class Agent {
       // Log the turnEvents received by the agent before calling the service
       logger.debugObj(`[Agent.js Debug - ${this.name}] Received turnEvents for LLMService:`, turnEvents);
       
-      // Delegate to LLMService for the actual update logic
+      // Call LLMService, which returns result + requestId
       const updateResult = await LLMService.updateMemory(this, this.memory, turnEvents);
       
-      // IMPORTANT: Agent.js needs to handle the *return value* from LLMService
-      // The LLMService returns { deducedCards, summary } OR the original memory object on skip.
+      // Store the request ID for this memory update (use nullish coalescing)
+      this.lastMemoryUpdateRequestId = updateResult.requestId ?? null;
       
-      // If LLMService skipped (returned original memory), we need to return the expected structure.
-      if (updateResult === this.memory) { // Check if it returned the original memory object
-          logger.info(`LLMService skipped memory update for ${this.name} (likely empty turnEvents), returning empty result.`);
-          return { deducedCards: [], summary: '(Memory update skipped by LLMService)' }; 
-      } 
-      
-      // Otherwise, LLMService returned { deducedCards, summary }
-      // The LLMService.updateMemory function internally calls this.memory.update if it exists.
-
-      return updateResult; // Return the { deducedCards, summary } object
+      // LLMService.updateMemory already updates the memory object internally if memory.update exists.
+      // We just need to return the structured result (without request ID) for Game.js
+      return { 
+          deducedCards: updateResult.deducedCards, 
+          summary: updateResult.summary, 
+          error: updateResult.error || null // Pass along potential errors from LLMService
+      };
 
     } catch (error) {
-      logger.error(`Error during agent memory update for ${this.name}: ${error.message}`);
-      // Return empty results on error
-      return { deducedCards: [], summary: '(Error in agent memory update)' };
+      logger.error(`Agent-level error during memory update for ${this.name}: ${error.message}`, { error });
+      this.lastMemoryUpdateRequestId = null;
+      // Return empty/error results on error
+      return { 
+          deducedCards: [], 
+          summary: `(Agent error in memory update: ${error.message})`, 
+          error: error.message 
+      };
     }
   }
 

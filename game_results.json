@@ -1,0 +1,87 @@
+[
+  {
+    "timestamp": "2025-04-21T10:14:55.734Z",
+    "solution": {
+      "suspect": "Mr. Green",
+      "weapon": "Candlestick",
+      "room": "Billiard Room"
+    },
+    "winner": null,
+    "totalTurns": 120,
+    "accusations": [],
+    "players": [
+      {
+        "name": "Red Agent",
+        "model": "c4ai-aya-expanse-32b",
+        "hasLost": false
+      },
+      {
+        "name": "Blue Agent",
+        "model": "command-r-plus-04-2024",
+        "hasLost": false
+      },
+      {
+        "name": "Green Agent",
+        "model": "command-a-03-2025",
+        "hasLost": false
+      },
+      {
+        "name": "Yellow Agent",
+        "model": "command-r-plus-04-2024",
+        "hasLost": false
+      },
+      {
+        "name": "Purple Agent",
+        "model": "command-a-03-2025",
+        "hasLost": false
+      },
+      {
+        "name": "Orange Agent",
+        "model": "c4ai-aya-expanse-32b",
+        "hasLost": false
+      }
+    ]
+  },
+  {
+    "winner": "No winner",
+    "players": [
+      {
+        "name": "Red Agent",
+        "model": "c4ai-aya-expanse-32b",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Blue Agent",
+        "model": "command-r-plus-04-2024",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Green Agent",
+        "model": "command-a-03-2025",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Yellow Agent",
+        "model": "command-r-plus-04-2024",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Purple Agent",
+        "model": "command-a-03-2025",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Orange Agent",
+        "model": "c4ai-aya-expanse-32b",
+        "missedOpportunities": []
+      }
+    ],
+    "timestamp": "2025-04-21T10:14:57.738Z",
+    "solution": {
+      "suspect": "Mr. Green",
+      "weapon": "Candlestick",
+      "room": "Billiard Room"
+    },
+    "totalTurns": 120
+  }
+]

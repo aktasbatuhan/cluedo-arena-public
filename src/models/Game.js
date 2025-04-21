@@ -8,7 +8,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { LoggingService } from '../services/LoggingService.js';
 import { logger } from '../utils/logger.js';
+import axios from 'axios';
+
 let ioInstance = null;
+
+// --- Configuration ---
+const ART_WRAPPER_URL = process.env.ART_WRAPPER_URL || 'http://localhost:5001'; // Default wrapper URL
 
 /**
  * Represents a game of Cluedo/Clue with AI agents powered by LLMs.
@@ -558,57 +563,112 @@ export class Game extends EventEmitter {
   }
 
   async updateAgentMemories(agent, suggestion, challengeResult) {
-    console.log('Updating agent memories...');
-    
-    // Collect the deductions from each agent
-    const allAgentsDeductions = {};
-    
-    for (const currentAgent of this.agents) {
-      if (currentAgent.hasLost) continue;
-      
-      // Format turn events specifically for this agent - with appropriate information hiding
-      const turnEvents = this.formatTurnEvents(agent, suggestion, challengeResult, currentAgent);
-      
-      // Calculate ground truth deductions for this agent for this turn
-      const groundTruthDeductions = this.getDeterministicNewDeductions(currentAgent, turnEvents);
-      
-      // Update memory and collect agent's deductions
-      try {
-        // This will return deduced cards and the summary text
-        const { deducedCards, summary } = await currentAgent.updateMemory(turnEvents);
-        
-        // Add concise log for deductions and summary
-        console.log(`[Agent Update - ${currentAgent.name}]:`);
-        console.log(`  LLM Summary: ${summary || '(No summary provided)'}`);
-        console.log(`  LLM Deductions: [${deducedCards.join(', ') || 'None'}]`);
-        console.log(`  Ground Truth Deductions: [${groundTruthDeductions.join(', ') || 'None'}]`);
-        
-        // Add to the deduction comparison log (this still includes ground truth)
-        await LoggingService.logLLMInteraction({
-          type: 'deduction_comparison',
-          agent: currentAgent.name,
-          model: currentAgent.model,
-          turnEvents,
-          groundTruthDeductions,
-          llmDeductions: deducedCards,
-          // Calculate reward based on deduction accuracy
-          reward: this.calculateDeductionReward(deducedCards, groundTruthDeductions)
-        });
-        
-        allAgentsDeductions[currentAgent.name] = {
-          groundTruth: groundTruthDeductions,
-          agentDeduced: deducedCards
-        };
-        
-      } catch (error) {
-        console.error(`Error updating memory for ${currentAgent.name}:`, error);
-      }
+    const turnEvents = this.formatTurnEvents(agent, suggestion, challengeResult, agent);
+    // Update memory for the agent who made the suggestion
+    try {
+        logger.info(`Updating memory for ${agent.name}...`);
+        // Agent.updateMemory now returns { deducedCards, summary, error }
+        const memoryUpdateResult = await agent.updateMemory(turnEvents);
+
+        // If the update call itself had an error, log it but don't log trajectory
+        if (memoryUpdateResult.error) {
+            logger.error(`Memory update for ${agent.name} failed within Agent/LLMService: ${memoryUpdateResult.error}`);
+            // Skip trajectory logging for this failed update
+        } else {
+            // Log deterministic deductions and calculate reward
+            const groundTruthDeductions = this.getDeterministicNewDeductions(agent, turnEvents); 
+            const reward = this.calculateDeductionReward(
+                memoryUpdateResult.deducedCards || [], // Use cards deduced by LLM
+                groundTruthDeductions // Compare against ground truth
+            );
+
+            // Get the request ID stored by Agent.js during the updateMemory call
+            const requestId = agent.lastMemoryUpdateRequestId;
+
+            this.logEvent({
+                type: 'deduction_comparison', 
+                agent: agent.name,
+                llmDeductions: memoryUpdateResult.deducedCards || [],
+                groundTruthDeductions: groundTruthDeductions,
+                reward: reward,
+                message: `LLM deduced ${memoryUpdateResult.deducedCards?.length || 0} cards. Ground truth: ${groundTruthDeductions.length}. Reward: ${reward}.`
+            });
+
+            // --- Log Trajectory to ART Wrapper (Conditional) ---
+            if (process.env.LLM_BACKEND === 'ART') {
+                if (requestId && typeof reward === 'number') {
+                    const trajectoryPayload = {
+                        request_id: requestId,
+                        reward: reward,
+                        metrics: { 
+                            llm_deductions_count: memoryUpdateResult.deducedCards?.length || 0,
+                            ground_truth_deductions_count: groundTruthDeductions.length
+                            // Add any other relevant metrics
+                        }
+                    };
+                    try {
+                        logger.info(`Logging memory_update trajectory for ${agent.name}, request ${requestId}, reward ${reward}`);
+                        await axios.post(`${ART_WRAPPER_URL}/log_trajectory`, trajectoryPayload);
+                        // Optionally clear the request ID on the agent after logging?
+                        // agent.lastMemoryUpdateRequestId = null; 
+                    } catch (logError) {
+                        logger.error(`Failed to log trajectory for request ${requestId}: ${logError.message}`, { error: logError });
+                        // Handle logging failure if needed (e.g., retry?)
+                    }
+                } else {
+                    if (!requestId) logger.warn(`[ART Mode] Cannot log memory_update trajectory for ${agent.name}: Missing request ID.`);
+                    if (typeof reward !== 'number') logger.warn(`[ART Mode] Cannot log memory_update trajectory for ${agent.name}: Invalid reward (${reward}).`);
+                }
+            }
+            // ----------------------------------------
+        }
+
+    } catch (error) {
+        logger.error(`Error processing memory update for ${agent.name}: ${error.message}`, { error });
     }
-    
-    console.log('Memory updates complete');
-    // Log the deductions for monitoring/debugging
-    if (Object.keys(allAgentsDeductions).length > 0) {
-      console.log('Agent Deductions:', JSON.stringify(allAgentsDeductions, null, 2));
+
+    // Update memory for other agents based on observable events
+    for (const otherAgent of this.agents) {
+        if (otherAgent !== agent && !otherAgent.hasLost) {
+            const observableEvents = this.formatTurnEvents(agent, suggestion, challengeResult, otherAgent);
+            try {
+                logger.info(`Updating memory for observer ${otherAgent.name}...`);
+                // Call updateMemory, but we generally don't reward observers directly for passive updates
+                const observerUpdateResult = await otherAgent.updateMemory(observableEvents); 
+                if (observerUpdateResult.error){
+                    logger.error(`Observer memory update for ${otherAgent.name} failed: ${observerUpdateResult.error}`);
+                } 
+                // --- Log Observer Trajectory (Optional & Conditional) ---
+                if (process.env.LLM_BACKEND === 'ART') {
+                    const observerRequestId = otherAgent.lastMemoryUpdateRequestId;
+                    if (observerRequestId) {
+                        const observerPayload = {
+                            request_id: observerRequestId,
+                            reward: 0, // Or calculate a specific observer reward
+                            metrics: { 
+                               is_observer: true, 
+                               llm_deductions_count: observerUpdateResult.deducedCards?.length || 0 
+                            }
+                        };
+                        try {
+                            logger.info(`Logging observer memory_update trajectory for ${otherAgent.name}, request ${observerRequestId}, reward 0`);
+                            await axios.post(`${ART_WRAPPER_URL}/log_trajectory`, observerPayload);
+                            // otherAgent.lastMemoryUpdateRequestId = null; 
+                        } catch (logError) {
+                             logger.error(`Failed to log observer trajectory for request ${observerRequestId}: ${logError.message}`, { error: logError });
+                        }
+                    } else {
+                         // No request ID likely means the update was skipped (no events) or failed before LLM call
+                         if (observableEvents && observableEvents.length > 0 && !observerUpdateResult.error){
+                             logger.warn(`[ART Mode] Cannot log observer memory_update trajectory for ${otherAgent.name}: Missing request ID.`);
+                         }
+                    }
+                }
+                // ----------------------------------------
+            } catch (error) {
+                logger.error(`Error processing observer memory update for ${otherAgent.name}: ${error.message}`, { error });
+            }
+        }
     }
   }
 
