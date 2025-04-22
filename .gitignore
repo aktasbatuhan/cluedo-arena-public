@@ -22,3 +22,7 @@ yarn-error.log*
 # Build files
 dist/
 build/
+
+# RL-Reason-Game specific outputs
+rl-reason-game/models/
+rl-reason-game/wandb/
