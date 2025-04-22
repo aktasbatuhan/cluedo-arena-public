@@ -1,0 +1,13 @@
+[project]
+name = "rl-reason-game"
+version = "0.1.0"
+description = "Train a LLM on reasoning games using RL"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=3.5.0",
+    "numpy>=2.2.4",
+    "torch>=2.6.0",
+    "transformers>=4.51.3",
+    "trl>=0.16.1",
+]
