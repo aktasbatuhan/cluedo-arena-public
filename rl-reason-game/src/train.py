@@ -2,7 +2,7 @@
 
 import os
 import argparse
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Tuple
 import random
 import numpy as np
 import torch
@@ -96,9 +96,10 @@ def prepare_game_dataset(
     game_name: str,
     data_dir: str,
     tokenizer
-) -> Dataset:
+) -> Tuple[Dataset, Dict[str, List[str]]]:
     """
-    Prepare a dataset from game data for training.
+    Prepare a dataset from game data for training, returning the dataset
+    and a lookup map from prompt to ground truth deductions.
     
     Args:
         game_name: Name of the game
@@ -106,64 +107,74 @@ def prepare_game_dataset(
         tokenizer: Tokenizer for the model
         
     Returns:
-        Dataset formatted for GRPO training
+        Tuple containing:
+            - Dataset formatted for GRPO training (prompt, completion, reward)
+            - Dictionary mapping prompt strings to ground_truth_deductions lists
     """
     # Initialize game with empty config
     game = GameRegistry.get_game(game_name, {})
     
     # Load game data
     data_loader = DataLoader(data_dir)
-    game_data_list = data_loader.load_game_data(game)
+    # game_data_list should be a list with one entry containing "board_states"
+    # as per the load_jsonl_data modification in CluedoGame
+    raw_game_data = data_loader.load_game_data(game) 
     
-    print(f"Preparing dataset for {game_name}. Loaded {len(game_data_list)} items.")
+    print(f"Preparing dataset for {game_name}. Loaded raw data structure with {len(raw_game_data)} item(s).")
     
-    # Convert to training examples
+    # Convert to training examples and build lookup map
     examples = []
+    prompt_to_ground_truth: Dict[str, List[str]] = {}
     
-    # If this is the Cluedo game, handle its specific data format
     if game_name == "cluedo":
-        # We expect a list with one entry containing a key "board_states" with all interactions
-        if len(game_data_list) > 0 and "board_states" in game_data_list[0]:
-            board_states = game_data_list[0]["board_states"]
+        if len(raw_game_data) > 0 and "board_states" in raw_game_data[0]:
+            all_interactions = raw_game_data[0]["board_states"]
             
-            # Filter to only include memory_update interactions with valid rewards
-            valid_states = []
-            for state in board_states:
+            valid_states_count = 0
+            for state in all_interactions:
                 # Only use memory_update with non-null logged_reward for training
                 if (state.get("interaction_type") == "memory_update" and 
                     state.get("logged_reward") is not None):
-                    valid_states.append(state)
+                    valid_states_count += 1
+                    prompt = game.get_state_representation(state)
+                    
+                    # Original chosen response is the completion for GRPO KL term
+                    chosen_response = state.get("chosen_response", {})
+                    if isinstance(chosen_response, dict) and "summary" in chosen_response:
+                        completion = chosen_response.get("summary", "") 
+                    elif isinstance(chosen_response, dict) and "deducedCards" in chosen_response:
+                        summary = chosen_response.get("summary", "No summary provided")
+                        deduced_cards = chosen_response.get("deducedCards", [])
+                        completion = f"{summary} Deduced cards: {', '.join(deduced_cards)}"
+                    else:
+                        completion = json.dumps(chosen_response)
+
+                    reward = float(state.get("logged_reward", 0.0))
+                    ground_truth = state.get("ground_truth_deductions") 
+                    # Ensure ground_truth is a list of strings, even if null/empty
+                    if ground_truth is None:
+                        ground_truth = []
+                    elif not isinstance(ground_truth, list):
+                        ground_truth = [] # Or handle error
+                        
+                    examples.append({
+                        "prompt": prompt,
+                        "completion": completion,
+                        "reward": reward
+                    })
+                    # Add to lookup map, handling potential duplicate prompts if necessary
+                    if prompt not in prompt_to_ground_truth: 
+                         prompt_to_ground_truth[prompt] = ground_truth
+                    # else: Handle duplicate prompts? For now, overwrite/ignore.
             
-            print(f"Filtered to {len(valid_states)} valid memory_update interactions with rewards")
+            print(f"Found {valid_states_count} valid memory_update interactions with rewards for training.")
+            print(f"Created {len(examples)} training examples and {len(prompt_to_ground_truth)} prompt-to-ground-truth mappings.")
             
-            for state in valid_states:
-                prompt = game.get_state_representation(state)
-                # Get the expected completion (response)
-                chosen_response = state.get("chosen_response", {})
-                
-                # Try to extract summary from chosen_response
-                if isinstance(chosen_response, dict) and "summary" in chosen_response:
-                    completion = chosen_response.get("summary", "")
-                # If no summary directly, try to get it from deducedCards structure if present
-                elif isinstance(chosen_response, dict) and "deducedCards" in chosen_response:
-                    # Format the completion to be consistent
-                    summary = chosen_response.get("summary", "No summary provided")
-                    deduced_cards = chosen_response.get("deducedCards", [])
-                    completion = f"{summary} Deduced cards: {', '.join(deduced_cards)}"
-                else:
-                    # Fallback: convert the whole chosen_response to JSON
-                    completion = json.dumps(chosen_response)
-                
-                examples.append({
-                    "prompt": prompt,
-                    "completion": completion,
-                    "reward": float(state.get("logged_reward", 0.0))
-                })
         else:
-            print(f"Warning: Cluedo game data not in expected format: {game_data_list}")
+            print(f"Warning: Cluedo game data not in expected format: {raw_game_data}")
     else:
         # Standard processing for other games
-        for game_data in game_data_list:
+        for game_data in raw_game_data:
             board_states = game_data.get("board_states", [])
             
             # For each state, create a training example
@@ -192,40 +203,42 @@ def prepare_game_dataset(
                     "prompt": prompt,
                     "completion": completion
                 })
-    
-    print(f"Created {len(examples)} training examples")
-    
-    # Convert to Hugging Face dataset
+        
+        print(f"Created {len(examples)} training examples (non-Cluedo game).")
+
+    # Convert examples list to Hugging Face dataset dict
     dataset_dict = {
         "prompt": [ex["prompt"] for ex in examples],
-        "completion": [ex["completion"] for ex in examples]
+        "completion": [ex["completion"] for ex in examples],
+        "reward": [ex.get("reward", 0.0) for ex in examples] # Include original rewards
     }
     
-    # Add rewards if available
-    if examples and "reward" in examples[0]:
-        dataset_dict["reward"] = [ex.get("reward", 0.0) for ex in examples]
+    dataset = Dataset.from_dict(dataset_dict)
     
-    return Dataset.from_dict(dataset_dict)
+    return dataset, prompt_to_ground_truth
 
 def create_reward_function(
     game_name: str,
     reward_name: str,
-    reward_config: Dict[str, Any]
+    reward_config: Dict[str, Any],
+    prompt_to_ground_truth: Dict[str, List[str]]
 ) -> Callable:
     """
-    Create a reward function for GRPO training based on the specified reward model.
+    Create a reward function for GRPO training.
+    For Cluedo, it compares generated deductions against ground truth.
     
     Args:
         game_name: Name of the game
         reward_name: Name of the reward model
         reward_config: Configuration for the reward model
+        prompt_to_ground_truth: Lookup map from prompt to ground truth deductions
         
     Returns:
         Reward function that takes completions and returns rewards
     """
-    # Initialize game and reward model
-    game = GameRegistry.get_game(game_name, {})
-    reward_model = RewardRegistry.get_reward_model(reward_name, reward_config)
+    # Initialize game and reward model (optional, might not be needed anymore)
+    # game = GameRegistry.get_game(game_name, {})
+    # reward_model = RewardRegistry.get_reward_model(reward_name, reward_config)
     
     def reward_function(
         prompts: List[str],
@@ -234,79 +247,62 @@ def create_reward_function(
     ) -> List[float]:
         """
         Compute rewards for a batch of completions.
-        Uses pre-computed rewards from the dataset if available.
+        For Cluedo, compares model's deduced cards against ground truth.
         
         Args:
             prompts: List of prompt strings
-            completions: List of completion strings (agent responses)
-            rewards: List of pre-computed rewards from the dataset (passed via kwargs)
+            completions: List of completion strings (model's generated JSON response)
             
         Returns:
             List of reward values
         """
+        batch_rewards = []
         
-        # Check if the rewards are passed directly in kwargs (this happens with GRPO when
-        # the dataset contains reward values)
-        if "rewards" in kwargs and isinstance(kwargs["rewards"], (list, np.ndarray)) and len(kwargs["rewards"]) == len(prompts):
-            # print(f"Using pre-computed rewards from dataset: {kwargs['rewards'][:5]}...")
-            # Ensure rewards are floats
-            try:
-                return [float(r) for r in kwargs["rewards"]]
-            except (ValueError, TypeError) as e:
-                 print(f"Warning: Error converting pre-computed rewards to float: {e}. Returning zeros.")
-                 return [0.0] * len(prompts)
-        
-        # Fallback if pre-computed rewards are not available or invalid
-        print("Warning: Pre-computed rewards not found or invalid in kwargs. Using fallback reward calculation.")
-        
-        rewards = []
-        # For Cluedo, if we somehow don't have pre-computed rewards, we might evaluate the completion
-        if game_name == "cluedo":
-            # Placeholder: Evaluate completion quality (e.g., is it valid JSON?)
-            # This part needs a more robust implementation if used.
-            for completion in completions:
-                try:
-                    # Example: Reward valid JSON summaries
-                    parsed_completion = json.loads(completion)
-                    if isinstance(parsed_completion, dict) and "summary" in parsed_completion:
-                         rewards.append(0.1) # Small reward for valid format
-                    else:
-                         rewards.append(0.0)
-                except json.JSONDecodeError:
-                    rewards.append(-0.1) # Penalize invalid JSON
-            print(f"Using fallback Cluedo reward calculation, generated rewards: {rewards[:5]}...")
-            return rewards
+        for prompt, completion_str in zip(prompts, completions):
+            reward = 0.0 # Default reward
             
-        # Original board game reward calculation (likely won't be reached for Cluedo)
-        for prompt, completion in zip(prompts, completions):
-            try:
-                lines = prompt.split("\n")
-                current_board_idx = lines.index("Current board:") + 1
-                board_rep = "\n".join(lines[current_board_idx:current_board_idx+5])
-                board = [[" " for _ in range(3)] for _ in range(3)]
-                current_state = {"board": board}
+            # Only calculate custom reward for Cluedo memory updates
+            # Check if the prompt is one we have ground truth for
+            if game_name == "cluedo" and prompt in prompt_to_ground_truth:
+                ground_truth_deductions = set(prompt_to_ground_truth[prompt])
+                model_deductions = set()
                 
                 try:
-                    row, col = map(int, completion.strip().split(","))
-                    next_board = [r.copy() for r in board]
-                    next_board[row][col] = "X"
-                    next_state = {"board": next_board}
-                    is_terminal = game.is_terminal_state(next_state)
+                    # Parse the model's generated JSON completion
+                    parsed_completion = json.loads(completion_str)
                     
-                    if is_terminal:
-                        winner = game._check_winner(next_board) # Assuming _check_winner exists
-                        game_result = {"result": winner if winner else "draw", "players": ["X", "O"]}
-                        reward = reward_model.compute_reward(game_result, "X")
+                    # Extract deduced cards - check common key names
+                    if isinstance(parsed_completion, dict):
+                        if "deducedCards" in parsed_completion and isinstance(parsed_completion["deducedCards"], list):
+                            model_deductions = set(parsed_completion["deducedCards"])
+                        elif "newly_deduced_held_cards" in parsed_completion and isinstance(parsed_completion["newly_deduced_held_cards"], list):
+                             model_deductions = set(parsed_completion["newly_deduced_held_cards"])
+                             
+                    # Compare sets for exact match
+                    if model_deductions == ground_truth_deductions:
+                        # Reward more if the deduction was non-trivial (not empty)
+                        reward = 1.0 if ground_truth_deductions else 0.1 
                     else:
-                        reward = 0.1
-                except (ValueError, IndexError):
-                    reward = -1.0
-            except Exception as e:
-                print(f"Error computing fallback reward: {str(e)}")
-                reward = 0.0
-            rewards.append(reward)
-        
-        return rewards
+                        # Optional: Implement partial reward based on overlap (e.g., Jaccard index)
+                        # intersection = len(model_deductions.intersection(ground_truth_deductions))
+                        # union = len(model_deductions.union(ground_truth_deductions))
+                        # reward = intersection / union if union > 0 else 0.0
+                        reward = 0.0 # Penalize incorrect deductions for now
+                        
+                except json.JSONDecodeError:
+                    # Penalize completions that aren't valid JSON
+                    reward = -0.1 
+                except Exception as e:
+                    print(f"Error during reward calculation for prompt: {e}")
+                    reward = 0.0 # Assign neutral reward on unexpected error
+            
+            # else: Handle non-cluedo games or prompts not in lookup? 
+            # For now, assign 0.0 reward if not a Cluedo prompt we have ground truth for.
+            
+            batch_rewards.append(reward)
+            
+        # print(f"Calculated batch rewards: {batch_rewards[:5]}...")
+        return batch_rewards
     
     return reward_function
 
@@ -328,17 +324,19 @@ def main():
         param.requires_grad = True
     print("Set model parameters to requires_grad=True")
     
-    # Prepare dataset
-    dataset = prepare_game_dataset(args.game, args.data_dir, tokenizer)
+    # Prepare dataset and prompt-to-ground-truth lookup
+    dataset, prompt_to_ground_truth = prepare_game_dataset(args.game, args.data_dir, tokenizer)
     
-    # Create reward function
-    reward_config = {
-        "win_reward": 1.0,
-        "loss_reward": -1.0,
-        "draw_reward": 0.2,
-        "step_penalty": -0.05
+    # Create reward function, passing the lookup map
+    reward_config = { # Config might be needed by reward_model if used in fallback
+        # Add any relevant config if needed
     }
-    reward_func = create_reward_function(args.game, args.reward, reward_config)
+    reward_func = create_reward_function(
+        args.game, 
+        args.reward, 
+        reward_config, 
+        prompt_to_ground_truth # Pass the map here
+    )
     
     # Configure GRPO training
     training_args = GRPOConfig(
@@ -350,7 +348,7 @@ def main():
         logging_steps=10,
         save_steps=100,
         gradient_accumulation_steps=4,
-        gradient_checkpointing=True,
+        gradient_checkpointing=False,
         fp16=False,  # Keep fp16 disabled for now, enable later if GPU supports it
         optim="adamw_torch",
         remove_unused_columns=False,
