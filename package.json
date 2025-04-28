@@ -9,7 +9,8 @@
     "dev": "nodemon --ignore '*.log' --ignore 'logs/*' --ignore 'game_results.json' src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "run-games": "node src/index.js --run-games",
-    "run-games:3": "node src/index.js --run-games --num-games=3"
+    "run-games:3": "node src/index.js --run-games --num-games=3",
+    "run-games:openrouter": "node src/index.js --run-games --num-games=3 --llm-backend=openrouter"
   },
   "keywords": [
     "cluedo",

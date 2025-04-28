@@ -199,8 +199,7 @@ export class Game extends EventEmitter {
       availableSuspects: this.SUSPECTS,
       availableWeapons: this.WEAPONS,
       availableRooms: this.ROOMS,
-      activePlayers: this.agents.filter(a => !a.hasLost).length,
-      recentHistory: this.turnHistory.slice(-5)
+      activePlayers: this.agents.filter(a => !a.hasLost).length
     };
   }
 
@@ -272,13 +271,20 @@ export class Game extends EventEmitter {
             console.log('No successful challenges');
         }
 
-        // 3. After seeing challenge results, consider making an accusation
+        // --- FIX RESTORED: Update memories AFTER challenge, BEFORE accusation consideration ---
+        if (!this.isOver) {
+            await this.updateAgentMemories(currentAgent, suggestion, challengeResult, null);
+        }
+        // ----------------------------------------------------------------------
+
+        // 3. After seeing challenge results AND UPDATED MEMORY, consider making an accusation
         console.log(`${currentAgent.name} is considering an accusation...`);
         logger.debug(`Calling agent.considerAccusation() for ${currentAgent.name}...`);
         
         let accusationDecision;
         try {
-            accusationDecision = await currentAgent.considerAccusation();
+            // Pass current turn's suggestion and challenge result
+            accusationDecision = await currentAgent.considerAccusation(suggestion, challengeResult);
             logger.debug(`agent.considerAccusation() completed for ${currentAgent.name}.`);
         } catch (error) {
             console.error(`Error during accusation consideration for ${currentAgent.name}:`, error.message);
@@ -286,7 +292,6 @@ export class Game extends EventEmitter {
             accusationDecision = {
                 shouldAccuse: false,
                 accusation: { suspect: null, weapon: null, room: null },
-                confidence: { suspect: 0, weapon: 0, room: 0 },
                 reasoning: "Error in accusation evaluation, choosing not to accuse."
             };
         }
@@ -301,7 +306,6 @@ export class Game extends EventEmitter {
                 agent: currentAgent.name,
                 accusation: accusationDecision.accusation,
                 reasoning: accusationDecision.reasoning,
-                confidence: accusationDecision.confidence,
                 timestamp: new Date()
             });
 
@@ -337,11 +341,42 @@ export class Game extends EventEmitter {
             }
         }
 
-        // After dealing with the suggestion and challenges, update agent memories
+        // --- Check for missed deterministic accusation opportunities ---
         if (!this.isOver) {
-            // Use our new function instead of the inline memory update code
-            await this.updateAgentMemories(currentAgent, suggestion, challengeResult);
+            // Calculate if this agent could have made a deterministic accusation
+            const allKnownEliminated = new Set([...currentAgent.cards, ...currentAgent.memory.eliminatedCards]); 
+            const remainingSuspects = this.SUSPECTS.filter(s => !allKnownEliminated.has(s));
+            const remainingWeapons = this.WEAPONS.filter(w => !allKnownEliminated.has(w));
+            const remainingRooms = this.ROOMS.filter(r => !allKnownEliminated.has(r));
+
+            if (remainingSuspects.length === 1 && remainingWeapons.length === 1 && remainingRooms.length === 1) {
+                const deterministicAccusation = {
+                    suspect: remainingSuspects[0],
+                    weapon: remainingWeapons[0], 
+                    room: remainingRooms[0],
+                };
+
+                // Check if this deterministic accusation matches the actual solution
+                const isDeterministicallyCorrect = 
+                    deterministicAccusation.suspect === this.solution.suspect &&
+                    deterministicAccusation.weapon === this.solution.weapon &&
+                    deterministicAccusation.room === this.solution.room;
+                
+                // Log if the agent could have accused correctly but didn't
+                if (isDeterministicallyCorrect && (!accusationDecision || !accusationDecision.shouldAccuse)) {
+                    logger.warn(`MISSED OPPORTUNITY: ${currentAgent.name} could have deterministically accused correctly ${JSON.stringify(deterministicAccusation)} but chose not to (Decision: ${JSON.stringify(accusationDecision)}).`);
+                    await LoggingService.logLLMInteraction({
+                        type: 'missed_deterministic_accusation',
+                        agent: currentAgent.name,
+                        model: currentAgent.model,
+                        deterministicAccusation: deterministicAccusation,
+                        llmDecision: accusationDecision,
+                        timestamp: new Date()
+                    });
+                }
+            }
         }
+        // ----------------------------------------------------------------------
 
         // Advance to next turn if game is not over
         if (!this.isOver) {
@@ -562,114 +597,101 @@ export class Game extends EventEmitter {
     return `${agentName} shows a card to disprove the suggestion.`;
   }
 
-  async updateAgentMemories(agent, suggestion, challengeResult) {
-    const turnEvents = this.formatTurnEvents(agent, suggestion, challengeResult, agent);
-    // Update memory for the agent who made the suggestion
-    try {
-        logger.info(`Updating memory for ${agent.name}...`);
-        // Agent.updateMemory now returns { deducedCards, summary, error }
-        const memoryUpdateResult = await agent.updateMemory(turnEvents);
+  /**
+   * Updates agent memories based on the turn's events (suggestion, challenge).
+   * Now calculates and logs deduction comparisons for ALL agents.
+   *
+   * @param {Agent} suggestingAgent - The agent who made the suggestion.
+   * @param {Object} suggestion - The suggestion made {suspect, weapon, room, reasoning}.
+   * @param {Object} challengeResult - Result of challenges {challenger, cardShown, noChallenge}.
+   * @param {Object} accusationDecision - The accusation decision made by the suggesting agent this turn.
+   * @async
+   */
+  async updateAgentMemories(suggestingAgent, suggestion, challengeResult, accusationDecision) {
+      this.logger.info(`Updating memories for all agents after ${suggestingAgent.name}'s turn.`);
+      this.logger.debug(`Suggestion details: ${JSON.stringify(suggestion)}`);
+      this.logger.debug(`Challenge result details: ${JSON.stringify(challengeResult)}`);
 
-        // If the update call itself had an error, log it but don't log trajectory
-        if (memoryUpdateResult.error) {
-            logger.error(`Memory update for ${agent.name} failed within Agent/LLMService: ${memoryUpdateResult.error}`);
-            // Skip trajectory logging for this failed update
-        } else {
-            // Log deterministic deductions and calculate reward
-            const groundTruthDeductions = this.getDeterministicNewDeductions(agent, turnEvents); 
-            const reward = this.calculateDeductionReward(
-                memoryUpdateResult.deducedCards || [], // Use cards deduced by LLM
-                groundTruthDeductions // Compare against ground truth
-            );
+      // Loop through ALL agents to update memory and compare deductions
+      for (const agent of this.agents) {
+          if (agent.hasLost) {
+              this.logger.debug(`Skipping memory update for eliminated agent: ${agent.name}`);
+              continue;
+          }
 
-            // Get the request ID stored by Agent.js during the updateMemory call
-            const requestId = agent.lastMemoryUpdateRequestId;
+          this.logger.info(`Processing memory update for agent: ${agent.name}`);
+          this.logger.debug(`Agent cards: ${Array.from(agent.cards).join(', ')}`);
+          this.logger.debug(`Agent eliminated cards: ${Array.from(agent.memory.eliminatedCards).join(', ')}`);
 
-            this.logEvent({
+          try {
+              // --- Add Deterministic Memory Update based on Challenge --- 
+              if (challengeResult && challengeResult.cardToShow) {
+                  if (agent.name === suggestingAgent.name) {
+                      // Card was shown TO the suggesting agent
+                      if (!agent.cards.has(challengeResult.cardToShow)) { // Avoid eliminating own card if shown back
+                          agent.memory.eliminateCard(challengeResult.cardToShow);
+                          this.logger.debug(`Deterministically eliminated ${challengeResult.cardToShow} for ${agent.name} (was shown card).`);
+                      }
+                  } else if (agent.name === challengeResult.challengingAgent) {
+                      // Challenger showed the card (should already be in knownCards, but ensure consistency)
+                      // No action needed here as addKnownCard handles removing from other sets
+                      // agent.memory.addKnownCard(challengeResult.cardToShow);
+                  } else {
+                      // Observer agent: if they weren't the suggester or challenger, the shown card is eliminated for them
+                      agent.memory.eliminateCard(challengeResult.cardToShow);
+                      this.logger.debug(`Deterministically eliminated ${challengeResult.cardToShow} for ${agent.name} (observed challenge).`);
+                  }
+              }
+              // --------------------------------------------------------
+
+              // --- Record Structured Turn Events in Memory History --- 
+              // (Do this BEFORE calling the LLM for memory update)
+              agent.memory.recordTurnEvents(
+                  this.currentTurn, // Pass the current game turn number
+                  suggestingAgent ? suggestingAgent.name : null, // Pass the suggester's name
+                  suggestion, // Pass the structured suggestion object
+                  challengeResult // Pass the structured challenge result object
+              );
+              this.logger.debug(`Recorded turn events in memory history for ${agent.name}.`);
+              // -----------------------------------------------------
+
+              // Calculate Ground Truth Deductions for THIS agent
+              this.logger.debug(`Calculating ground truth deductions for ${agent.name}...`);
+              const groundTruthDeductions = this.getDeterministicNewDeductions(agent, suggestingAgent, suggestion, challengeResult);
+              this.logger.info(`Ground truth deductions for ${agent.name}: ${groundTruthDeductions.length > 0 ? groundTruthDeductions.join(', ') : 'None'}`);
+
+              // Call LLM to update memory and get its deductions
+              const turnEventsForLLM = this.formatTurnEvents(suggestingAgent, suggestion, challengeResult, agent);
+              this.logger.debug(`Turn events for ${agent.name}: ${JSON.stringify(turnEventsForLLM)}`);
+              
+              const llmMemoryUpdateResult = await LLMService.updateMemory(agent, agent.memory, turnEventsForLLM);
+              const llmDeductions = llmMemoryUpdateResult.deducedCards || [];
+              this.logger.info(`LLM deductions for ${agent.name}: ${llmDeductions.length > 0 ? llmDeductions.join(', ') : 'None'}`);
+
+              // Calculate Reward and Log Comparison
+              const reward = this.calculateDeductionReward(llmDeductions, groundTruthDeductions);
+              this.logger.info(`Reward calculation for ${agent.name}:
+                - LLM deductions: ${llmDeductions.join(', ') || 'None'}
+                - Ground truth: ${groundTruthDeductions.join(', ') || 'None'}
+                - Reward: ${reward}`);
+
+              // Log the comparison event
+              await LoggingService.logLLMInteraction({
                 type: 'deduction_comparison', 
                 agent: agent.name,
-                llmDeductions: memoryUpdateResult.deducedCards || [],
+                  model: agent.model,
+                  llmDeductions: llmDeductions,
                 groundTruthDeductions: groundTruthDeductions,
                 reward: reward,
-                message: `LLM deduced ${memoryUpdateResult.deducedCards?.length || 0} cards. Ground truth: ${groundTruthDeductions.length}. Reward: ${reward}.`
-            });
+                  timestamp: new Date()
+              });
 
-            // --- Log Trajectory to ART Wrapper (Conditional) ---
-            if (process.env.LLM_BACKEND === 'ART') {
-                if (requestId && typeof reward === 'number') {
-                    const trajectoryPayload = {
-                        request_id: requestId,
-                        reward: reward,
-                        metrics: { 
-                            llm_deductions_count: memoryUpdateResult.deducedCards?.length || 0,
-                            ground_truth_deductions_count: groundTruthDeductions.length
-                            // Add any other relevant metrics
-                        }
-                    };
-                    try {
-                        logger.info(`Logging memory_update trajectory for ${agent.name}, request ${requestId}, reward ${reward}`);
-                        await axios.post(`${ART_WRAPPER_URL}/log_trajectory`, trajectoryPayload);
-                        // Optionally clear the request ID on the agent after logging?
-                        // agent.lastMemoryUpdateRequestId = null; 
-                    } catch (logError) {
-                        logger.error(`Failed to log trajectory for request ${requestId}: ${logError.message}`, { error: logError });
-                        // Handle logging failure if needed (e.g., retry?)
-                    }
-                } else {
-                    if (!requestId) logger.warn(`[ART Mode] Cannot log memory_update trajectory for ${agent.name}: Missing request ID.`);
-                    if (typeof reward !== 'number') logger.warn(`[ART Mode] Cannot log memory_update trajectory for ${agent.name}: Invalid reward (${reward}).`);
-                }
-            }
-            // ----------------------------------------
-        }
+          } catch (error) {
+              this.logger.error(`Error updating memory for ${agent.name}: ${error.message}`, { error });
+          }
+      }
 
-    } catch (error) {
-        logger.error(`Error processing memory update for ${agent.name}: ${error.message}`, { error });
-    }
-
-    // Update memory for other agents based on observable events
-    for (const otherAgent of this.agents) {
-        if (otherAgent !== agent && !otherAgent.hasLost) {
-            const observableEvents = this.formatTurnEvents(agent, suggestion, challengeResult, otherAgent);
-            try {
-                logger.info(`Updating memory for observer ${otherAgent.name}...`);
-                // Call updateMemory, but we generally don't reward observers directly for passive updates
-                const observerUpdateResult = await otherAgent.updateMemory(observableEvents); 
-                if (observerUpdateResult.error){
-                    logger.error(`Observer memory update for ${otherAgent.name} failed: ${observerUpdateResult.error}`);
-                } 
-                // --- Log Observer Trajectory (Optional & Conditional) ---
-                if (process.env.LLM_BACKEND === 'ART') {
-                    const observerRequestId = otherAgent.lastMemoryUpdateRequestId;
-                    if (observerRequestId) {
-                        const observerPayload = {
-                            request_id: observerRequestId,
-                            reward: 0, // Or calculate a specific observer reward
-                            metrics: { 
-                               is_observer: true, 
-                               llm_deductions_count: observerUpdateResult.deducedCards?.length || 0 
-                            }
-                        };
-                        try {
-                            logger.info(`Logging observer memory_update trajectory for ${otherAgent.name}, request ${observerRequestId}, reward 0`);
-                            await axios.post(`${ART_WRAPPER_URL}/log_trajectory`, observerPayload);
-                            // otherAgent.lastMemoryUpdateRequestId = null; 
-                        } catch (logError) {
-                             logger.error(`Failed to log observer trajectory for request ${observerRequestId}: ${logError.message}`, { error: logError });
-                        }
-                    } else {
-                         // No request ID likely means the update was skipped (no events) or failed before LLM call
-                         if (observableEvents && observableEvents.length > 0 && !observerUpdateResult.error){
-                             logger.warn(`[ART Mode] Cannot log observer memory_update trajectory for ${otherAgent.name}: Missing request ID.`);
-                         }
-                    }
-                }
-                // ----------------------------------------
-            } catch (error) {
-                logger.error(`Error processing observer memory update for ${otherAgent.name}: ${error.message}`, { error });
-            }
-        }
-    }
+      this.logger.info('Finished updating memories for all agents.');
   }
 
   getGameSummary() {
@@ -1080,123 +1102,90 @@ export class Game extends EventEmitter {
   }
 
   /**
-   * Determines which cards can be definitively deduced as held by players based on a turn's events.
-   * This creates the "ground truth" for deduction accuracy evaluation.
-   * 
-   * @param {Agent} agent - The agent for whom to calculate deductions
-   * @param {Object} turnEvents - Events that occurred during the turn
-   * @returns {Array<string>} Array of card names that can now be deterministically deduced
+   * Calculates deterministic deductions an agent can make based on turn events
+   * and their current knowledge (hand + eliminated cards).
+   *
+   * @param {Agent} agent - The agent for whom deductions are being calculated.
+   * @param {Agent} suggestingAgent - The agent who made the suggestion.
+   * @param {Object | null} suggestion - The suggestion made {suspect, weapon, room}, or null if none.
+   * @param {Object} challengeResult - Result of challenges {challengingAgent, cardShown, noChallenge}.
+   * @returns {Array<string>} - An array of card names newly deduced this turn.
    */
-  getDeterministicNewDeductions(agent, turnEvents) {
-    // Cards that can be deterministically deduced from this turn's events
-    const newDeductions = new Set();
-    
-    // Skip if no turn events
-    if (!turnEvents || !Array.isArray(turnEvents) || turnEvents.length === 0) {
-      return [];
-    }
+  getDeterministicNewDeductions(agent, suggestingAgent, suggestion, challengeResult) {
+      this.logger.debug(`Starting deterministic deductions for ${agent.name}`);
+      this.logger.debug(`Input state:
+        - Current turn: ${this.currentTurn}
+        - Suggesting agent: ${suggestingAgent.name}
+        - Suggestion: ${JSON.stringify(suggestion)}
+        - Challenge result: ${JSON.stringify(challengeResult)}
+        - Agent cards: ${Array.from(agent.cards).join(', ')}
+        - Agent eliminated cards: ${Array.from(agent.memory.eliminatedCards).join(', ')}`);
 
-    // Get the agent's current known cards (that we'll exclude from "new" deductions)
-    const agentKnownCards = new Set(agent.cards); // Start with agent's own cards
-    
-    // Extract suggestion information from turn events
-    let suggestion = null;
-    let suggester = null;
-    let challengeResults = {};
+      // Initialize with ONLY previously eliminated cards
+      const agentKnownCards = new Set([...agent.memory.eliminatedCards]);
+      const newlyDeducedCards = new Set();
 
-    // First pass to extract suggestion and challenges information
-    for (const event of turnEvents) {
-      // Handle structured event objects or string events
-      const eventText = typeof event === 'string' ? event : event.message || '';
-      
-      // Extract suggestion details
-      const suggestionMatch = eventText.match(/(\w+ Agent) suggested ([\w\s]+), ([\w\s]+), ([\w\s]+)/);
-      if (suggestionMatch) {
-        const [_, suggestingAgent, suspect, weapon, room] = suggestionMatch;
-        suggester = suggestingAgent;
-        suggestion = { suspect, weapon, room };
-      }
-      
-      // Extract challenge results
-      const challengeMatch = eventText.match(/(\w+ Agent) (showed|did not show) (?:a|the) card(?: "([\w\s]+)")? to (\w+ Agent)/);
-      if (challengeMatch) {
-        const [_, challengingAgent, result, cardShown, toAgent] = challengeMatch;
-        challengeResults[challengingAgent] = {
-          showed: result === 'showed',
-          cardShown: cardShown || null,
-          toAgent
-        };
-      }
-      
-      // Specifically handle events where the card shown is known
-      if (typeof event === 'object' && event.type === 'cardShown' && event.to === agent.name) {
-        if (!agentKnownCards.has(event.card)) {
-          newDeductions.add(event.card);
+      // Rule 0: On first memory update, add own cards as newly deduced AND to the known set
+      const isFirstUpdate = !agent.memory.currentMemory;
+      if (isFirstUpdate) {
+          this.logger.debug(`Rule 0 triggered for ${agent.name} (first update)`);
+          for (const card of agent.cards) {
+              // Always add own cards as deductions on the first update
+              this.logger.debug(`Rule 0: Adding own card ${card} as newly deduced`);
+              newlyDeducedCards.add(card);
+              agentKnownCards.add(card); // Also add to known set for subsequent rules
+          }
+      } else {
+          // If not the first update, add own cards to the 'known' set for checks, but NOT as 'newly deduced'
+          for (const card of agent.cards) {
+              agentKnownCards.add(card);
         }
       }
-    }
-    
-    // If we have a suggestion, process deterministic deductions
-    if (suggestion && suggester) {
-      const suggestedCards = [suggestion.suspect, suggestion.weapon, suggestion.room];
+
+      if (!suggestion || !suggestion.suspect) {
+          this.logger.debug(`No suggestion provided for ${agent.name}, returning deductions: ${Array.from(newlyDeducedCards).join(', ')}`);
+          return Array.from(newlyDeducedCards);
+      }
+
+      // Rule 1: If this agent is the suggester and a card was shown to them, they can deduce it
+      if (agent.name === suggestingAgent.name && !challengeResult.noChallenge && challengeResult.cardToShow) {
+          const shownCard = challengeResult.cardToShow;
+          if (!agentKnownCards.has(shownCard)) {
+              this.logger.debug(`Rule 1: ${agent.name} was shown ${shownCard} and can deduce it`);
+              newlyDeducedCards.add(shownCard);
+              agentKnownCards.add(shownCard);
+        }
+      }
       
-      // Case 1: Agent made the suggestion and was shown a card
-      if (suggester === agent.name) {
-        // Find which agents showed cards
-        const showingAgents = Object.entries(challengeResults)
-          .filter(([_, result]) => result.showed && result.toAgent === agent.name)
-          .map(([agentName]) => agentName);
+      // Rule 2: If this agent is the suggester and they hold 2 of the 3 suggested cards,
+      // and someone challenged, they can deduce the third card
+      if (agent.name === suggestingAgent.name && !challengeResult.noChallenge) {
+          const suggestionCards = [suggestion.suspect, suggestion.weapon, suggestion.room];
+          const cardsAgentHolds = suggestionCards.filter(card => agent.cards.has(card));
           
-        if (showingAgents.length === 1) {
-          // If the agent knows all but one of the suggested cards, the shown card must be the missing one
-          const heldSuggestionCards = suggestedCards.filter(card => agentKnownCards.has(card));
-          
-          if (heldSuggestionCards.length === 2) {
-            // Agent must have been shown the third card
-            const deducedCard = suggestedCards.find(card => !agentKnownCards.has(card));
-            if (deducedCard) {
-              newDeductions.add(deducedCard);
-            }
+          if (cardsAgentHolds.length === 2) {
+              const deducedCard = suggestionCards.find(card => !agent.cards.has(card));
+              if (deducedCard && !agentKnownCards.has(deducedCard)) {
+                  this.logger.debug(`Rule 2: ${agent.name} holds 2/3 cards and can deduce ${deducedCard}`);
+                  newlyDeducedCards.add(deducedCard);
+                  agentKnownCards.add(deducedCard);
+              }
           }
         }
-      }
-      
-      // Case 2: Another agent made the suggestion and everyone responded "no" except one agent
-      else {
-        const noResponseAgents = Object.entries(challengeResults)
-          .filter(([_, result]) => !result.showed)
-          .map(([agentName]) => agentName);
-          
-        // Check if all but one agent (and the suggester) couldn't disprove
-        const shouldHaveResponded = this.agents
-          .filter(a => !a.hasLost && a.name !== suggester)
-          .length;
-          
-        if (noResponseAgents.length === shouldHaveResponded - 1) {
-          // The one agent who did show a card must have one of the suggested cards
-          // If that agent showed a card to the current agent, we already handled it above
-          // This deduction is more useful for the suggester, not the current agent
-          
-          // However, if all agents except one said "no" and that agent didn't show a card to the current agent,
-          // we can deduce that the remaining agent must have at least one of the cards
-          // (This is useful information but not a deterministic card deduction)
-        }
         
-        // Case 3: If all agents (except suggester) said "no", all three suggested cards must be in the solution
-        // This is a strong deduction that the cards are NOT held by any player
-        if (noResponseAgents.length === shouldHaveResponded) {
-          // While this is deterministic knowledge, it's not a "card held by a player" deduction,
-          // so we don't add it to newDeductions in this implementation
-        }
+      // Rule 3: If this agent is the challenger and showed a card, they can deduce that card
+      if (agent.name === challengeResult.challengingAgent && challengeResult.cardToShow) {
+          const shownCard = challengeResult.cardToShow;
+          if (!agentKnownCards.has(shownCard)) {
+              this.logger.debug(`Rule 3: ${agent.name} showed ${shownCard} and can deduce it`);
+              newlyDeducedCards.add(shownCard);
+              agentKnownCards.add(shownCard);
+          }
       }
-      
-      // Case 4: If an agent couldn't disprove a suggestion, they must not have any of the suggested cards
-      // We can deduce which agents definitely don't have which cards, but since our goal is to identify
-      // cards that are definitely held by specific players, we don't add these negative deductions
-    }
-    
-    // Convert the Set to an Array before returning
-    return Array.from(newDeductions);
+
+      const finalDeductions = Array.from(newlyDeducedCards);
+      this.logger.debug(`Final deductions for ${agent.name}: ${finalDeductions.join(', ') || 'None'}`);
+      return finalDeductions;
   }
 
   async handleGameOver(reason, agent) {
@@ -1204,66 +1193,46 @@ export class Game extends EventEmitter {
   }
   
   /**
-   * Formats turn events for agent memory updates
+   * Formats turn events into a narrative string for LLM context or logging.
+   * Adapts the narrative based on the recipient agent's perspective.
    * 
-   * @param {Agent} suggestingAgent - The agent who made the suggestion
-   * @param {Object} suggestion - The suggestion made
-   * @param {Object} challengeResult - The challenge result
-   * @param {Agent} recipientAgent - The agent who will receive these events
-   * @returns {Array} Formatted turn events with appropriate information hiding
+   * @param {Agent} suggestingAgent - The agent who made the suggestion.
+   * @param {Object} suggestion - The suggestion {suspect, weapon, room}.
+   * @param {Object} challengeResult - {challenger, cardShown, noChallenge}.
+   * @param {Agent | null} recipientAgent - The agent whose perspective we're taking (null for general context).
+   * @returns {Array<string>} An array of strings describing the turn events.
    */
   formatTurnEvents(suggestingAgent, suggestion, challengeResult, recipientAgent) {
     const events = [];
+    const suggesterName = suggestingAgent.name;
+
+    // Event 1: Suggestion
+    events.push(`${suggesterName} suggested: ${suggestion.suspect}, ${suggestion.weapon}, ${suggestion.room}.`);
     
-    // Add suggestion event - visible to all agents
-    events.push({
-      type: 'suggestion',
-      agent: suggestingAgent.name,
-      suspect: suggestion.suspect,
-      weapon: suggestion.weapon,
-      room: suggestion.room
-    });
-    
-    // Add challenge event if there was a challenge
-    if (challengeResult) {
-      // Basic challenge info - visible to all agents
-      events.push({
-        type: 'challenge',
-        agent: suggestingAgent.name, 
-        challengingAgent: challengeResult.challengingAgent,
-        canChallenge: challengeResult.canChallenge,
-        // Don't include cardToShow here as it's private
-      });
-      
-      // Add card shown event if a card was shown - BUT only show the specific card
-      // to the agent who showed it or the agent who received it
-      if (challengeResult.canChallenge && challengeResult.cardToShow) {
-        // Determine if this recipient should know the specific card
-        const shouldKnowSpecificCard = 
-          recipientAgent.name === suggestingAgent.name || // the agent who received the card
-          recipientAgent.name === challengeResult.challengingAgent; // the agent who showed the card
-        
-        if (shouldKnowSpecificCard) {
-          // Full information for involved agents
-          events.push({
-            type: 'cardShown',
-            from: challengeResult.challengingAgent,
-            to: suggestingAgent.name,
-            card: challengeResult.cardToShow
-          });
+    // Event 2: Challenge Result
+    const cardActuallyShown = challengeResult.cardToShow; // Capture the value safely
+    const challengerName = challengeResult.challengingAgent;
+    const challengerDisplayName = challengerName || 'An unknown agent'; // Handle potential null challenger if logic changes
+
+    if (!challengeResult.canChallenge || !challengerName || !cardActuallyShown) {
+        // Use canChallenge for clarity, also check if challenger/card are validly present
+        events.push(`No one could disprove ${suggesterName}'s suggestion.`);
         } else {
-          // Limited information for other agents - they only know a card was shown, not which one
-          events.push({
-            type: 'cardShown',
-            from: challengeResult.challengingAgent,
-            to: suggestingAgent.name,
-            card: null, // No specific card info
-            hiddenInfo: true // Flag indicating info is hidden
-          });
+        // Determine the narrative based on the recipient agent's perspective
+        if (!recipientAgent) {
+             // General context (no specific recipient)
+             events.push(`${challengerDisplayName} challenged and showed a card to ${suggesterName}.`);
+        } else if (recipientAgent.name === suggesterName) {
+            // Perspective of the suggesting agent - USE cardActuallyShown
+            events.push(`${challengerDisplayName} showed you the card: ${cardActuallyShown}.`);
+        } else if (recipientAgent.name === challengerName) {
+            // Perspective of the challenging agent - USE cardActuallyShown
+            events.push(`You showed ${suggesterName} the card: ${cardActuallyShown}.`);
+        } else {
+            // Perspective of an observer
+            events.push(`${challengerDisplayName} showed a card to ${suggesterName} (you did not see the card).`);
         }
       }
-    }
-    
     return events;
   }
 

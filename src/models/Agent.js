@@ -158,7 +158,7 @@ export class Agent {
    *                           - confidence: Confidence levels for each element
    *                           - reasoning: Explanation of decision
    */
-  async considerAccusation() {
+  async considerAccusation(suggestion, challengeResult) {
     try {
       // Ensure game reference exists
       if (!this.game) {
@@ -173,7 +173,9 @@ export class Agent {
       const gameState = {
         currentTurn: this.game.currentTurn,
         knownCards: this.cards,
-        memory: memoryState
+        memory: memoryState,
+        currentSuggestion: suggestion,
+        currentChallengeResult: challengeResult
       };
       
       logger.debug(`Calling LLMService.considerAccusation for ${this.name} (Model: ${this.model})...`);

@@ -1,5 +1,6 @@
 import { Game } from './models/Game.js';
 import { startServer } from './server.js';
+import { LLMService } from './services/llm.js';
 
 async function runAutomatedGames(numGames) {
   console.log(`Starting ${numGames} automated games...`);
@@ -18,10 +19,37 @@ async function runAutomatedGames(numGames) {
 }
 
 async function main() {
-  // Check if running with --run-games flag
+  // Check command line arguments
   const runGamesArg = process.argv.find(arg => arg === '--run-games');
   const numGamesArg = process.argv.find(arg => arg.startsWith('--num-games='));
-  
+  const backendArg = process.argv.find(arg => arg.startsWith('--llm-backend='));
+
+  // Set LLM Backend based on argument
+  if (backendArg) {
+      const backendName = backendArg.split('=')[1];
+      if (backendName === 'openrouter' || backendName === 'cohere') {
+          try {
+              LLMService.setBackend(backendName);
+          } catch (error) {
+               console.error(`Error setting LLM backend: ${error.message}`);
+               process.exit(1);
+          }
+      } else {
+          console.error(`Invalid --llm-backend specified: ${backendName}. Use 'cohere' or 'openrouter'.`);
+          process.exit(1);
+      }
+  } else {
+      // Default to cohere if no argument provided
+      // Ensure CO_API_KEY is set for default
+      try {
+        LLMService.setBackend('cohere'); 
+      } catch (error) {
+        // Don't exit if default fails, maybe server mode doesn't need LLM immediately
+        // But log a warning if keys might be needed later
+        console.warn(`Warning: Defaulting to Cohere backend, but setup failed: ${error.message}. Ensure keys are set if running games.`);
+      }
+  }
+
   if (runGamesArg) {
     // Extract number of games from arguments or default to 1
     const numGames = numGamesArg 
