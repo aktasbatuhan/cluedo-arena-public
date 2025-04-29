@@ -40,39 +40,45 @@ export class GameResult {
   }
   
   static async saveResults(results) {
+    console.log('[GameResult.saveResults] Starting save process...');
+    const resultPath = path.join(__dirname, '../../game_results.json');
+    console.log(`[GameResult.saveResults] Determined result path: ${resultPath}`);
     try {
-      const resultPath = path.join(__dirname, '../../game_results.json');
-      
-      // Create directory if it doesn't exist
       const dir = path.dirname(resultPath);
       try {
+        console.log(`[GameResult.saveResults] Ensuring directory exists: ${dir}`);
         await mkdir(dir, { recursive: true });
       } catch (dirError) {
-        // Ignore if directory already exists
         if (dirError.code !== 'EEXIST') {
-          console.error('Failed to create directory:', dirError);
-          // Continue anyway
+          console.error('[GameResult.saveResults] Failed to create directory:', dirError);
         }
       }
-      
+
       let existing = [];
       try {
+        console.log('[GameResult.saveResults] Reading existing results file (if any)...');
         const data = await readFile(resultPath, 'utf8');
         existing = JSON.parse(data);
+        console.log(`[GameResult.saveResults] Successfully read and parsed ${existing.length} existing results.`);
       } catch (readError) {
-        console.error('Reading existing results failed, starting new file:', readError.message);
+        if (readError.code === 'ENOENT') {
+          console.log('[GameResult.saveResults] No existing results file found. Starting new file.');
+        } else {
+          console.error('[GameResult.saveResults] Reading existing results failed, starting new file:', readError.message);
+        }
         existing = [];
       }
-      
-      const updated = [...existing, results];
-      
+
+      const resultsToAppend = Array.isArray(results) ? results : [results];
+      console.log(`[GameResult.saveResults] Appending ${resultsToAppend.length} new result(s).`);
+      const updated = [...existing, ...resultsToAppend];
+
       try {
-        await writeFile(resultPath, JSON.stringify(updated, null, 2));
-        console.log('Game results saved successfully to:', resultPath);
+        console.log(`[GameResult.saveResults] Writing ${updated.length} total results to file...`);
+        await writeFile(resultPath, JSON.stringify(updated, null, 2), { encoding: 'utf8' });
+        console.log('[GameResult.saveResults] Game results saved successfully.');
       } catch (writeError) {
-        console.error('Error writing game results:', writeError);
-        
-        // Attempt to save backup copy
+        console.error('[GameResult.saveResults] Error WRITING game results file:', writeError);
         try {
           const backupPath = `${resultPath}.backup-${Date.now()}`;
           await writeFile(backupPath, JSON.stringify(updated));
@@ -80,11 +86,10 @@ export class GameResult {
         } catch (backupError) {
           console.error('Failed to create backup:', backupError);
         }
-        
         throw writeError;
       }
     } catch (error) {
-      console.error('Error in GameResult.saveResults:', error);
+      console.error('[GameResult.saveResults] Overall error in saveResults:', error);
       throw error;
     }
   }

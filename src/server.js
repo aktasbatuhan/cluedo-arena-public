@@ -4,7 +4,6 @@ import { Server } from 'socket.io';
 import { Game } from './models/Game.js';
 import { runGame } from './gameLogic.js';
 import { GameResult } from './models/GameResult.js';
-import { saveGameResult } from './services/llm.js';
 import { parseArgs } from 'node:util';
 
 let game = null;
@@ -92,7 +91,7 @@ export async function startServer() {
               });
               
               // Save game result
-              await saveGameResult({
+              await GameResult.saveResults({
                 winner: winner.name,
                 players: game.gameState.players,
                 accusation: data.accusation,
@@ -113,7 +112,7 @@ export async function startServer() {
               
               // Check if any players left
               if (game.gameState.players.length === 0) {
-                await saveGameResult({
+                await GameResult.saveResults({
                   winner: 'No winner',
                   players: game.originalPlayers,
                   timestamp: new Date().toISOString()
@@ -320,35 +319,39 @@ async function runGameLoop(game) {
     console.log('Missed Opportunities:', Object.fromEntries(missedOpportunities));
     
     console.log('Game loop completed');
+    const resultData = {
+        winner: game.winner ? {
+            name: game.winner.name,
+            model: game.winner.model
+        } : 'No winner',
+        players: game.agents?.map(agent => ({
+            name: agent.name,
+            model: agent.model,
+            missedOpportunities: missedOpportunities.get(agent.name) || []
+        })) || [],
+        timestamp: new Date().toISOString(),
+        solution: game.solution,
+        totalTurns: game.currentTurn
+    };
+
     if (game.winner) {
-      console.log(`Winner: ${game.winner.name}`);
-      await saveGameResult({
-        winner: {
-          name: game.winner.name,
-          model: game.winner.model
-        },
-        players: game.agents?.map(agent => ({
-          name: agent.name,
-          model: agent.model,
-          missedOpportunities: missedOpportunities.get(agent.name) || []
-        })) || [],
-        timestamp: new Date().toISOString(),
-        solution: game.solution,
-        totalTurns: game.currentTurn
-      });
+        console.log(`Winner: ${game.winner.name}`);
+        console.log('[runGameLoop] Attempting to save results...');
+        try {
+            await GameResult.saveResults(resultData);
+            console.log('[runGameLoop] Results save call completed.');
+        } catch (saveError) {
+            console.error('[runGameLoop] Error occurred during GameResult.saveResults:', saveError);
+        }
     } else {
-      console.log('Game ended without a winner');
-      await saveGameResult({
-        winner: 'No winner',
-        players: game.agents?.map(agent => ({
-          name: agent.name,
-          model: agent.model,
-          missedOpportunities: missedOpportunities.get(agent.name) || []
-        })) || [],
-        timestamp: new Date().toISOString(),
-        solution: game.solution,
-        totalTurns: game.currentTurn
-      });
+        console.log('Game ended without a winner');
+        console.log('[runGameLoop] Attempting to save results (no winner)...');
+        try {
+            await GameResult.saveResults(resultData);
+            console.log('[runGameLoop] Results save call completed (no winner).');
+        } catch (saveError) {
+            console.error('[runGameLoop] Error occurred during GameResult.saveResults (no winner):', saveError);
+        }
     }
     
   } catch (error) {

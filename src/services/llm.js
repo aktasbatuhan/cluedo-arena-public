@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import Ajv from 'ajv';
 import axios from 'axios';
-import { Game } from '../models/Game.js';
+import { SUSPECTS, WEAPONS, ROOMS } from '../config/gameConstants.js';
 import { logger } from '../utils/logger.js';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -10,6 +10,7 @@ import { CohereClient } from 'cohere-ai';
 import { LoggingService } from './LoggingService.js';
 import { OpenAI } from 'openai';       // Import OpenAI SDK
 import dotenv from 'dotenv';
+import yaml from 'js-yaml'; // <-- Add YAML import
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,10 +49,10 @@ const ajv = new Ajv();
 const suggestionSchema = {
   type: "object",
   properties: {
-    suspect: { type: "string" },
-    weapon: { type: "string" },
-    room: { type: "string" },
-    reasoning: { type: "string" }
+    suspect: { type: "string", enum: SUSPECTS },
+    weapon: { type: "string", enum: WEAPONS },
+    room: { type: "string", enum: ROOMS },
+    reasoning: { type: "string", minLength: 1 }
   },
   required: ["suspect", "weapon", "room", "reasoning"],
   additionalProperties: false
@@ -64,16 +65,43 @@ const accusationSchema = {
     accusation: {
       type: "object",
       properties: {
-        suspect: { type: "string", nullable: true },
-        weapon: { type: "string", nullable: true },
-        room: { type: "string", nullable: true }
+        suspect: { type: ["string", "null"], enum: [...SUSPECTS, null] },
+        weapon: { type: ["string", "null"], enum: [...WEAPONS, null] },
+        room: { type: ["string", "null"], enum: [...ROOMS, null] }
       },
-      required: ["suspect", "weapon", "room"]
+      required: ["suspect", "weapon", "room"],
     },
     reasoning: { type: "string" }
   },
-  required: ["shouldAccuse", "accusation", "reasoning"]
+  required: ["shouldAccuse", "accusation", "reasoning"],
+  additionalProperties: false
 };
+
+const memoryUpdateSchema = {
+    type: 'object',
+    properties: {
+        newlyDeducedCards: { type: 'array', items: { type: 'string' } },
+        reasoning: { type: 'string' },
+        memorySummary: { type: 'string' }
+    },
+    required: ['newlyDeducedCards', 'reasoning', 'memorySummary'],
+    additionalProperties: false
+};
+
+const challengeSchema = {
+    type: 'object',
+    properties: {
+        cardToShow: { type: 'string' },
+        reasoning: { type: 'string' }
+    },
+    required: ['cardToShow', 'reasoning'],
+    additionalProperties: false
+};
+
+const validateSuggestion = ajv.compile(suggestionSchema);
+const validateAccusation = ajv.compile(accusationSchema);
+const validateMemoryUpdate = ajv.compile(memoryUpdateSchema);
+const validateChallenge = ajv.compile(challengeSchema);
 
 // Replace with this custom JSON parser:
 function extractJSON(response) {
@@ -269,6 +297,61 @@ export class LLMService {
   }
 
   /**
+   * Attempts to parse a YAML string from the LLM response.
+   * Handles potential errors during parsing.
+   *
+   * @param {string} response - The raw string response from the LLM.
+   * @returns {object | null} The parsed JavaScript object or null if parsing fails.
+   * @private
+   */
+  static #extractYAML(response) {
+    if (!response || typeof response !== 'string') {
+      return null;
+    }
+    try {
+      // Check for markdown fences and extract content if present
+      const yamlMatch = response.match(/```(?:yaml)?\n?([\s\S]*?)\n?```/);
+      const yamlContent = yamlMatch ? yamlMatch[1] : response;
+      
+      const parsed = yaml.load(yamlContent.trim()); // Trim whitespace
+      if (parsed !== null && typeof parsed === 'object') {
+        return parsed;
+      }
+      logger.warn(`YAML parsing resulted in non-object type: ${typeof parsed}`);
+      return null;
+    } catch (e) {
+      logger.error(`Failed to parse YAML: ${e.message}`, { response });
+      return null;
+    }
+  }
+
+  /**
+   * Parses YAML response and validates it against a given Ajv schema.
+   *
+   * @param {string} response - The YAML string response from the LLM.
+   * @param {Function} validateFunction - The compiled Ajv validation function.
+   * @returns {{valid: boolean, data: object | null, error: string | null}} Validation result.
+   * @private
+   */
+  static #safeParseYAML(response, validateFunction) {
+    const parsed = LLMService.#extractYAML(response);
+    if (!parsed) {
+      return { valid: false, data: null, error: 'Failed to parse YAML response.' };
+    }
+
+    const isValid = validateFunction(parsed);
+    if (!isValid) {
+      return {
+          valid: false,
+          data: parsed, // Return parsed data even if invalid
+          error: ajv.errorsText(validateFunction.errors)
+      };
+    }
+
+    return { valid: true, data: parsed, error: null };
+  }
+
+  /**
    * Generates a strategic suggestion for an agent during their turn.
    */
   static async makeSuggestion(agent, gameState) {
@@ -291,36 +374,29 @@ export class LLMService {
       backendConfig = LLMService.getBackendConfig(agent.model);
 
       const memoryState = await agent.memory.formatMemoryForLLM();
-        const prompt = `Analyze the game state and make a strategic suggestion:
-Known cards held: ${Array.from(agent.cards).join(', ')}
-Current turn number: ${gameState.currentTurn}
-Your current location: ${agent.location} (You must suggest this room)
-Available suspects (excluding yourself, ${agent.name}): ${gameState.availableSuspects.filter(s => s !== agent.name).join(', ')}
-Available weapons: ${gameState.availableWeapons.join(', ')}
-Available rooms (you must choose ${agent.location}): ${agent.location}
+        const prompt = `You are the Cluedo agent ${agent.name}. Your turn ${gameState.currentTurn}.
+Your hand: ${Array.from(agent.cards).join(', ')}.
+Your current location: ${agent.location || 'Unknown (must be in a room to suggest)'}.
+Available Rooms: ${gameState.availableRooms.join(', ')}
 
-Your memory and deductions:
-Known Information: ${JSON.stringify(memoryState.knownInformation, null, 2)}
-Current Deductions: ${memoryState.currentDeductions}
-Recent Turn History:
+Your knowledge:
+Known cards held: ${Array.from(agent.cards).join(', ') || 'None'}
+Eliminated Cards (Not in Solution): ${Array.from(agent.memory.eliminatedCards).join(', ') || 'None'}
+Suspected Cards: ${JSON.stringify(Object.fromEntries(agent.memory.suspectedCards))}
+Current Deductions Summary: ${memoryState.currentDeductions}
+Turn History Highlights:
 ${memoryState.turnHistory.join('\n')}
 
-Make a strategic suggestion considering:
-1. Your known cards and deductions.
-2. Previous suggestions and their outcomes (from Turn History).
-3. Information revealed by other players.
-4. Your current room (${agent.location}) - you MUST suggest this room.
-5. Choose a suspect (not yourself) and a weapon that seem most likely based on your deductions, or that would gather the most information.
+Based on your knowledge and location (${agent.location}), make a strategic suggestion (suspect, weapon, room).
+The suggested room MUST be your current location: ${agent.location}.
+Your goal is to gain new information by forcing others to reveal cards. Choose a suggestion that includes cards you suspect might be the solution OR cards held by others. Avoid suggesting only cards you know are eliminated unless tactically necessary.
 
-Respond ONLY with a JSON object in the following format.
-IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.
+Respond ONLY with a YAML object in the following format. Provide concise reasoning.
 
-{
-  "suspect": "string (must be an available suspect)",
-  "weapon": "string (must be an available weapon)",
-  "room": "string (must be your current room: ${agent.location})",
-  "reasoning": "string (explain your strategy and deduction process briefly)"
-}`;
+suspect: <string, one of ${gameState.availableSuspects.join(' | ')}>
+weapon: <string, one of ${gameState.availableWeapons.join(' | ')}>
+room: <string, MUST be ${agent.location}>
+reasoning: <string, your detailed thought process for this suggestion>`;
         loggingPayload.input = { prompt: prompt, gameState: gameState }; // Added gameState for context if needed later
 
         let responseText = '';
@@ -364,29 +440,41 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
         }
 
 
-        // --- Parsing and Validation (Common Logic) ---
-        let parsedResult = extractJSON(responseText);
-        if (!parsedResult || typeof parsedResult !== 'object') {
-            loggingPayload.validationStatus = 'failed_parsing';
-            throw new Error(`Failed to parse JSON response from LLM (${backendConfig.type})`);
-        }
-        loggingPayload.parsedOutput = parsedResult;
+        // --- Parsing and Validation (YAML) ---
+        const validationResult = LLMService.#safeParseYAML(responseText, validateSuggestion);
+        loggingPayload.parsedOutput = validationResult.data; // Log parsed data regardless of validity
 
-        if (!parsedResult.suspect || !parsedResult.weapon || !parsedResult.room || !parsedResult.reasoning) {
+        if (!validationResult.valid) {
           loggingPayload.validationStatus = 'failed_validation';
-            throw new Error(`LLM response (${backendConfig.type}) missing required fields`);
-      }
-      if (parsedResult.room !== agent.location) {
-            logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} suggestion: Room mismatch. Agent in ${agent.location}, suggested ${parsedResult.room}. Overriding.`);
-           parsedResult.room = agent.location;
-           loggingPayload.validationStatus = 'corrected_room';
-      } else {
-           loggingPayload.validationStatus = 'passed';
-      }
-        if (!gameState.availableSuspects.includes(parsedResult.suspect) || !gameState.availableWeapons.includes(parsedResult.weapon)) {
-            logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} suggestion: Invalid suspect or weapon suggested. S:${parsedResult.suspect}, W:${parsedResult.weapon}`);
-            // TODO: Decide how to handle - fallback or error? For now, allow but warn.
+          logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: Failed YAML validation: ${validationResult.error}. Response: ${responseText}`);
+          // Fallback logic
+          const fallbackSuspect = gameState.availableSuspects.find(s => !agent.memory.eliminatedCards.has(s)) || gameState.availableSuspects[0];
+          const fallbackWeapon = gameState.availableWeapons.find(w => !agent.memory.eliminatedCards.has(w)) || gameState.availableWeapons[0];
+          const fallbackReasoning = `(Fallback: LLM response failed YAML validation: ${validationResult.error})`;
+
+          // Log and return fallback
+          await LoggingService.logLLMInteraction(loggingPayload);
+          return {
+            suspect: fallbackSuspect,
+            weapon: fallbackWeapon,
+            room: agent.location, // Must use agent's location
+            reasoning: fallbackReasoning,
+            error: `Failed validation: ${validationResult.error}`
+          };
         }
+
+        // Additional Logic Check (e.g., ensure room matches location)
+        const parsedSuggestion = validationResult.data;
+        if (parsedSuggestion.room !== agent.location) {
+             logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: LLM suggested room (${parsedSuggestion.room}) different from agent location (${agent.location}). Correcting.`);
+             parsedSuggestion.room = agent.location; // Force correct room
+             parsedSuggestion.reasoning += ` (Corrected room to agent's location: ${agent.location})`;
+             loggingPayload.validationStatus = 'corrected_room';
+             loggingPayload.parsedOutput = parsedSuggestion; // Log corrected data
+        } else {
+             loggingPayload.validationStatus = 'passed';
+        }
+        // --- End Parsing and Validation ---
 
         // --- Logging (Always log successful or corrected interactions) ---
         await LoggingService.logLLMInteraction(loggingPayload);
@@ -395,10 +483,10 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
 
         // Return result
         const finalResult = {
-            suspect: parsedResult.suspect,
-            weapon: parsedResult.weapon,
-            room: parsedResult.room,
-            reasoning: parsedResult.reasoning
+            suspect: parsedSuggestion.suspect,
+            weapon: parsedSuggestion.weapon,
+            room: parsedSuggestion.room,
+            reasoning: parsedSuggestion.reasoning
         };
         // Add requestId if applicable (e.g., for ART)
         // if (requestId) finalResult.requestId = requestId;
@@ -420,11 +508,13 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
         }
 
         // Consistent fallback structure
+        const fallbackSuspect = gameState.availableSuspects ? gameState.availableSuspects[0] : 'Miss Scarlet';
+        const fallbackWeapon = gameState.availableWeapons ? gameState.availableWeapons[0] : 'Candlestick';
         return {
-            suspect: gameState.availableSuspects ? gameState.availableSuspects[0] : 'Miss Scarlet',
-            weapon: gameState.availableWeapons ? gameState.availableWeapons[0] : 'Candlestick',
+            suspect: fallbackSuspect,
+            weapon: fallbackWeapon,
             room: agent.location || 'Lounge',
-            reasoning: `Error occurred during ${taskType} via ${backendType}: ${error.message}, using fallback.`,
+            reasoning: `(Fallback: Error during ${taskType} via ${backendType}: ${error.message}, using fallback.`,
             error: error.message || `Unknown error during ${taskType}`
         };
     }
@@ -458,7 +548,32 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
           // Get the dynamic backend configuration
           backendConfig = LLMService.getBackendConfig(agent.model);
           const formattedMemory = await memory.formatMemoryForLLM();
-          const prompt = `You are ${agent.name}. Analyze the events from your last turn and update your memory and deductions.\\n\\nWHAT IS A DEDUCTION:\\nA deduction is a card that you can definitively conclude is NOT part of the murder solution. You can deduce a card when:\\n1. It's in your hand (you can see it, so it can't be part of the solution)\\n2. Another player shows it to you (proving it's not in the solution)\\n3. You can logically prove it must be held by a specific player based on the game events\\n\\nYour current knowledge:\\nCards in my hand: ${Array.from(agent.cards).join(', ')}\\nKnown Information: ${JSON.stringify(formattedMemory.knownInformation, null, 2)}\\nYour most recent memory note:\\n${formattedMemory.currentDeductions}\\n\\nEvents from my last turn:\\n${turnEvents.map(event => event.replace(agent.name, 'I').replace(/^I showed/, 'I showed').replace(/showed you/, 'showed me')).join('\n')}\\n\\nBased ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?\\nRemember: A deduction must be 100% certain - do not include guesses or probabilities.\\n\\nRespond ONLY with a JSON object in the following format. Provide an empty list if no new cards were deduced.\\nIMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.\\n\\n{\\n  \"newlyDeducedCards\": [\"string\"],\\n  \"reasoning\": \"string (explain exactly how you know each newly deduced card cannot be part of the solution)\",\\n  \"memorySummary\": \"string (Provide a DETAILED summary of your CURRENT understanding of the game state. Include ALL cards you know are eliminated (your hand + deduced), any strong suspicions, and key insights derived from the entire game history, not just the last turn.)\"\\n}`;
+          const prompt = `You are ${agent.name}. Analyze the events from your last turn (Turn ${agent.game.currentTurn}) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Your current knowledge:
+Cards in my hand: ${Array.from(agent.cards).join(', ')}
+Known Eliminated Cards: ${Array.from(memory.eliminatedCards).join(', ') || 'None'}
+Your most recent memory note:
+${formattedMemory.currentDeductions}
+
+Events from THIS turn:
+${turnEvents.map(event => event.replace(agent.name, 'I').replace(/^I showed/, 'I showed').replace(/showed you/, 'showed me')).join('\n')}
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+Remember: A deduction must be 100% certain.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.`;
           loggingPayload.input = { prompt, turnEvents }; // Include turnEvents in log input
 
           let responseText = '';
@@ -498,23 +613,39 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
              throw new Error(`Unsupported backend type configured: ${backendConfig.type}`);
           }
 
-          // --- Parsing and Validation ---
-          const parsedResult = extractJSON(responseText);
-          if (!parsedResult || typeof parsedResult !== 'object') {
-              loggingPayload.validationStatus = 'failed_parsing';
-              throw new Error(`Failed to parse JSON response from LLM (${backendConfig.type}) for ${taskType}`);
-          }
-          loggingPayload.parsedOutput = parsedResult;
+          // --- Parsing and Validation (YAML) ---
+          const validationResult = LLMService.#safeParseYAML(responseText, validateMemoryUpdate);
+          loggingPayload.parsedOutput = validationResult.data;
 
-          const deducedCards = parsedResult.newlyDeducedCards || [];
-          const summary = parsedResult.memorySummary || parsedResult.reasoning || '(No summary provided)';
-          const reasoning = parsedResult.reasoning || '(No reasoning provided)';
-
-          if (!Array.isArray(deducedCards)) {
-              loggingPayload.validationStatus = 'failed_validation';
-              throw new Error('Invalid format: newlyDeducedCards should be an array.');
+          if (!validationResult.valid) {
+            loggingPayload.validationStatus = 'failed_validation';
+            logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: Failed YAML validation: ${validationResult.error}. Response: ${responseText}`);
+            // Provide fallback, ensuring structure matches expected return
+            const fallbackResult = {
+                deducedCards: [],
+                summary: `(Fallback: LLM response failed YAML validation: ${validationResult.error})`,
+                error: `Failed validation: ${validationResult.error}`
+            };
+            // Log error and return fallback
+            await LoggingService.logLLMInteraction(loggingPayload);
+            return fallbackResult;
           }
+
           loggingPayload.validationStatus = 'passed';
+          const parsedResult = validationResult.data;
+          const deducedCards = parsedResult.newlyDeducedCards || []; // Default to empty array
+          const summary = parsedResult.memorySummary || parsedResult.reasoning || '(No summary provided by LLM)';
+          const reasoning = parsedResult.reasoning || '(No reasoning provided by LLM)';
+
+          // Ensure newlyDeducedCards is an array of strings (basic check)
+          if (!Array.isArray(deducedCards) || !deducedCards.every(c => typeof c === 'string')) {
+              logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: newlyDeducedCards is not an array of strings in YAML response. Correcting.`);
+              loggingPayload.validationStatus = 'corrected_deductions_format';
+              // Attempt to filter or handle, or just default to empty
+              parsedResult.newlyDeducedCards = []; // Safest fallback
+              loggingPayload.parsedOutput = parsedResult; // Log corrected data
+          }
+          // --- End Parsing and Validation ---
 
           // --- Update Memory Object ---
           if (memory.update) {
@@ -549,7 +680,7 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
           // Consistent fallback structure
           return {
             deducedCards: [],
-            summary: `(Error during ${taskType} via ${backendType}: ${error.message})`,
+            summary: `(Fallback: Error during ${taskType} via ${backendType}: ${error.message})`,
             error: error.message || `Unknown error during ${taskType}`
           };
     }
@@ -581,7 +712,21 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
       try {
           backendConfig = LLMService.getBackendConfig(agent.model);
           const memoryState = await agent.memory.formatMemoryForLLM();
-          const prompt = `You received a suggestion: ${suggestion.suspect}, ${suggestion.weapon}, ${suggestion.room}.\nYou hold the following matching card(s): ${cards.join(', ')}.\n\nYour current knowledge:\nKnown cards held: ${Array.from(agent.cards).join(', ') || 'None'}\nKnown Information: ${JSON.stringify(memoryState.knownInformation, null, 2)}\nCurrent Deductions: ${memoryState.currentDeductions}\n\nChoose ONE card from your matching cards (${cards.join(', ')}) to show to the suggester. Consider which card reveals the least about your overall hand and deductions, while still disproving the suggestion.\n\nRespond ONLY with a JSON object in the following format.\nIMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.\n\n{\n  "cardToShow": "string (must be one of: ${cards.join(', ')})",\n  "reasoning": "string (briefly explain your choice)"\n}`;
+          const prompt = `You are ${agent.name}. You received a suggestion: ${suggestion.suspect}, ${suggestion.weapon}, ${suggestion.room}.
+You hold the following matching card(s): ${cards.join(', ')}.
+
+Your current knowledge:
+Known cards held: ${Array.from(agent.cards).join(', ') || 'None'}
+Eliminated Cards (Not in Solution): ${Array.from(agent.memory.eliminatedCards).join(', ') || 'None'}
+Current Deductions Summary: ${memoryState.currentDeductions}
+
+Choose ONE card from your matching cards (${cards.join(', ')}) to show to the suggester.
+Consider which card reveals the least about your overall hand and deductions.
+
+Respond ONLY with a YAML object in the following format.
+
+cardToShow: <string, must be one of: ${cards.join(' | ')}>
+reasoning: <string, briefly explain your choice>`;
           loggingPayload.input = { prompt, suggestion, cards }; // Log relevant inputs
 
           let responseText = '';
@@ -621,34 +766,40 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
              throw new Error(`Unsupported backend type configured: ${backendConfig.type}`);
           }
 
-          // --- Parsing and Validation ---
-          let parsedResult = extractJSON(responseText);
-           if (!parsedResult || typeof parsedResult !== 'object' || !parsedResult.cardToShow) {
-              loggingPayload.validationStatus = 'failed_parsing';
-              // Don't throw an error here, fallback logic below handles it
-              logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: Failed to parse JSON response or missing cardToShow. Response: ${responseText}`);
-              parsedResult = { cardToShow: cards[0], reasoning: `(Fallback: Failed to parse LLM response)` }; // Ensure parsedResult is an object for fallback
-          } else {
-             loggingPayload.parsedOutput = parsedResult; // Log only if parsing succeeded initially
+          // --- Parsing and Validation (YAML) ---
+          const validationResult = LLMService.#safeParseYAML(responseText, validateChallenge);
+          loggingPayload.parsedOutput = validationResult.data;
+
+          if (!validationResult.valid || !validationResult.data?.cardToShow) { // Also check if cardToShow exists
+              loggingPayload.validationStatus = 'failed_validation';
+              const errorReason = validationResult.error || 'Missing cardToShow';
+              logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: Failed YAML validation or missing cardToShow: ${errorReason}. Response: ${responseText}`);
+              // Fallback logic
+              const fallbackCard = cards[0]; // Show the first matching card
+              const fallbackReasoning = `(Fallback: LLM response failed YAML validation: ${errorReason})`;
+
+              await LoggingService.logLLMInteraction(loggingPayload);
+              return { cardToShow: fallbackCard, reasoning: fallbackReasoning, error: `Failed validation: ${errorReason}` };
           }
 
+          const parsedResult = validationResult.data;
           const cardToShow = parsedResult.cardToShow;
           let reasoning = parsedResult.reasoning || '(No reasoning provided by LLM)';
 
+          // Check if the chosen card is valid
           if (!cards.includes(cardToShow)) {
               logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: LLM chose invalid card (${cardToShow}). Not in matching set (${cards.join(', ')}). Falling back.`);
               const fallbackCard = cards[0];
-              reasoning = `(Fallback: LLM chose invalid card ${cardToShow}). ${reasoning}`; // Prepend fallback reason
+              reasoning = `(Fallback: LLM chose invalid card ${cardToShow}). ${reasoning}`;
               loggingPayload.validationStatus = 'corrected_invalid_card';
-              // Log the original invalid response before returning fallback
+              loggingPayload.parsedOutput = { cardToShow: fallbackCard, reasoning }; // Log fallback data
               await LoggingService.logLLMInteraction(loggingPayload);
               return { cardToShow: fallbackCard, reasoning: reasoning };
           } else {
-              loggingPayload.validationStatus = 'passed'; // Or failed_parsing if initial parse failed but we handled it
-               if (loggingPayload.parsedOutput) loggingPayload.validationStatus = 'passed'; // Mark as passed only if initial parse was okay
+              loggingPayload.validationStatus = 'passed';
           }
 
-          // --- Logging (Successful or handled parse failure) ---
+          // --- Logging (Successful or handled validation failure) ---
           await LoggingService.logLLMInteraction(loggingPayload);
 
           logger.info(`[${backendConfig.type.toUpperCase()}] ${taskType} for ${agent.name} took ${Date.now() - startTime}ms`);
@@ -672,7 +823,7 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
           }
 
           // Consistent fallback structure
-          const fallbackCard = cards[0] || null; // Ensure fallback exists
+          const fallbackCard = cards[0] || null;
           return {
               cardToShow: fallbackCard,
               reasoning: `(Fallback: Error during ${taskType} via ${backendType}: ${error.message}). Showing ${fallbackCard || 'nothing'}.`,
@@ -716,45 +867,39 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
           }
       }
 
-          const prompt = `Based on your complete knowledge AND the events of THIS turn, decide if you are confident enough to make a final accusation to win the game.
+          const prompt = `You are ${agent.name}. Turn ${gameState.currentTurn}. Decide if you should make a final accusation to win.
 
 Your knowledge:
 - Your Hand: ${Array.from(agent.cards).join(', ') || 'None'}
-- Structured Knowledge: ${JSON.stringify(memoryState.knownInformation, null, 2)}
-- Your Most Recent Memory Note: ${memoryState.currentDeductions}
-
-Previous Turn Summary:
+- Eliminated Cards (Not in Solution): ${Array.from(agent.memory.eliminatedCards).join(', ') || 'None'}
+- Suspected Cards: ${JSON.stringify(Object.fromEntries(agent.memory.suspectedCards))}
+- Current Deductions Summary: ${memoryState.currentDeductions}
+- Turn History Highlights:
 ${memoryState.turnHistory.join('\n')}
 
 Current Turn Events (Turn ${gameState.currentTurn}):
 ${currentTurnEventsString}
 
-IMPORTANT CLUEDO LOGIC:
-1. If a suggestion is made and NO PLAYER can challenge it (show any cards), this is strong evidence that ALL THREE suggested cards might be in the solution.
-2. If a suggestion is made and is challenged, at least ONE of the suggested cards is NOT in the solution.
-3. Through elimination: If you can identify all but one card of a category (e.g., 5 of 6 suspects), the remaining one MUST be the solution.
-4. You can win by making a correct accusation even without 100% certainty - reasonable deduction based on probabilities is valid.
+CLUEDO LOGIC REMINDERS:
+1. No challenge to a suggestion implies suggested cards MIGHT be the solution.
+2. A challenge proves AT LEAST ONE suggested card is NOT the solution.
+3. Elimination: If 5/6 suspects are known, the last one IS the solution suspect.
+4. You can risk an accusation without 100% certainty based on strong evidence.
 
-You should consider making an accusation when:
-- You have strong evidence for all three components (suspect, weapon, room)
-- A suggestion including certain cards was not challenged by any player
-- Through the process of elimination, you've narrowed down possibilities significantly
-- The potential reward of winning outweighs the risk of being wrong
+Consider accusing if:
+- You have strong evidence/elimination for all 3 solution components.
+- A key suggestion was unchallenged.
 
-Respond ONLY with a JSON object in the following format.
+Respond ONLY with a YAML object in the following format.
 If shouldAccuse is true, provide your deduced solution.
 If shouldAccuse is false, provide null for accusation components.
-IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just return the JSON object directly.
 
-{
-  "shouldAccuse": boolean,
-  "accusation": {
-    "suspect": "string | null (your deduced suspect or null)",
-    "weapon": "string | null (your deduced weapon or null)",
-    "room": "string | null (your deduced room or null)"
-  },
-  "reasoning": "string (explain your decision and reasoning)"
-}`;
+shouldAccuse: <boolean>
+accusation:
+  suspect: <string | null, one of ${SUSPECTS.join(' | ')} or null>
+  weapon: <string | null, one of ${WEAPONS.join(' | ')} or null>
+  room: <string | null, one of ${ROOMS.join(' | ')} or null>
+reasoning: <string, explain your decision and confidence level>`;
           loggingPayload.input = { prompt: prompt, gameState: gameState }; // Added gameState for context if needed later
 
           let responseText = '';
@@ -794,31 +939,40 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
              throw new Error(`Unsupported backend type configured: ${backendConfig.type}`);
           }
 
-          // --- Parsing and Validation ---
-          // Use safeParseJSON for accusation which includes validation schema and normalization
-          const validationResult = safeParseJSON(responseText, accusationSchema);
+          // --- Parsing and Validation (YAML) ---
+          const validationResult = LLMService.#safeParseYAML(responseText, validateAccusation);
+          loggingPayload.parsedOutput = validationResult.data; // Log potentially invalid data
+
           if (!validationResult.valid) {
               loggingPayload.validationStatus = 'failed_validation';
-              logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: Failed validation: ${JSON.stringify(validationResult.error)}. Response: ${responseText}`);
-              // Don't throw error, use fallback below
-              // Set a default non-accusing structure for fallback logic
-              validationResult.data = {
+              logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: Failed YAML validation: ${validationResult.error}. Response: ${responseText}`);
+              // Fallback: Don't accuse
+              const fallbackResult = {
                   shouldAccuse: false,
                   accusation: { suspect: null, weapon: null, room: null },
-                  reasoning: `(Fallback: LLM response failed validation: ${JSON.stringify(validationResult.error)})`
+                  reasoning: `(Fallback: LLM response failed YAML validation: ${validationResult.error})`,
+                  error: `Failed validation: ${validationResult.error}`
               };
+              await LoggingService.logLLMInteraction(loggingPayload);
+              return fallbackResult; // Return structured fallback
           }
-          const parsedResult = validationResult.data;
-          loggingPayload.parsedOutput = parsedResult; // Log the (potentially corrected) data
-          loggingPayload.validationStatus = validationResult.valid ? 'passed' : 'failed_validation'; // Reflect validation status
 
-          // Additional logic check (even if JSON is valid)
+          const parsedResult = validationResult.data;
+          loggingPayload.validationStatus = 'passed'; // Initial validation passed
+
+          // Additional logic check (ensure details present if accusing)
           if (parsedResult.shouldAccuse &&
-              (!parsedResult.accusation.suspect || !parsedResult.accusation.weapon || !parsedResult.accusation.room)) {
-              logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: shouldAccuse is true but accusation details missing/null. Overriding to false.`);
+              (!parsedResult.accusation || !parsedResult.accusation.suspect || !parsedResult.accusation.weapon || !parsedResult.accusation.room)) {
+              logger.warn(`[${backendConfig.type.toUpperCase()}] ${agent.name} ${taskType}: shouldAccuse is true but accusation details missing/null in YAML. Overriding to false.`);
               parsedResult.shouldAccuse = false;
+              // Ensure accusation object exists before trying to null its properties
+              if (!parsedResult.accusation) parsedResult.accusation = {};
+              parsedResult.accusation.suspect = null;
+              parsedResult.accusation.weapon = null;
+              parsedResult.accusation.room = null;
               parsedResult.reasoning += " (Invalid accusation details provided, overriding shouldAccuse to false)";
               loggingPayload.validationStatus = 'corrected_logic'; // Mark as corrected
+              loggingPayload.parsedOutput = parsedResult; // Log corrected data
           }
 
           // --- Logging ---
@@ -829,8 +983,10 @@ IMPORTANT: Do NOT use markdown code blocks (\`\`\`json) in your response - just 
           // --- Return Result ---
           const finalResult = {
               shouldAccuse: parsedResult.shouldAccuse,
-              accusation: parsedResult.accusation,
+              accusation: parsedResult.accusation, // Contains nulls if not accusing
               reasoning: parsedResult.reasoning
+              // Include confidence if the schema/LLM provides it
+              // confidence: parsedResult.confidence
           };
           // if (requestId) finalResult.requestId = requestId;
           return finalResult;

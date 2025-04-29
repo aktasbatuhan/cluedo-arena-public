@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { LoggingService } from '../services/LoggingService.js';
 import { logger } from '../utils/logger.js';
 import axios from 'axios';
+import { SUSPECTS, WEAPONS, ROOMS } from '../config/gameConstants.js';
 
 let ioInstance = null;
 
@@ -30,15 +31,10 @@ export class Game extends EventEmitter {
     super(); // Initialize EventEmitter
     this.logger = logger; // Initialize the logger instance property
     this.io = io;
-    // Traditional Cluedo suspects (not agent names)
-    this.SUSPECTS = [
-      'Miss Scarlet',
-      'Colonel Mustard',
-      'Mrs. White',
-      'Mr. Green',
-      'Mrs. Peacock',
-      'Professor Plum'
-    ];
+    // Initialize instance properties from the exported constants
+    this.SUSPECTS = [...SUSPECTS];
+    this.WEAPONS = [...WEAPONS];
+    this.ROOMS = [...ROOMS];
 
     // Distinct agent names (colors)
     this.AGENT_NAMES = [
@@ -49,10 +45,6 @@ export class Game extends EventEmitter {
       'Purple Agent',
       'Orange Agent'
     ];
-    
-    // Weapons and rooms remain the same
-    this.WEAPONS = ['Candlestick', 'Dagger', 'Lead Pipe', 'Revolver', 'Rope', 'Wrench'];
-    this.ROOMS = ['Kitchen', 'Ballroom', 'Conservatory', 'Dining Room', 'Billiard Room', 'Library', 'Lounge', 'Hall', 'Study'];
     
     // Game state
     this.solution = null;          // The murder solution (suspect, weapon, room)
@@ -1188,8 +1180,28 @@ export class Game extends EventEmitter {
       return finalDeductions;
   }
 
-  async handleGameOver(reason, agent) {
-    // Implementation
+  async handleGameOver(reason, winningAgent) {
+    if (this.isOver) return; // Prevent multiple calls
+    this.isOver = true;
+    this.winner = winningAgent; // Ensure winner is set here
+
+    const reasonMessage = reason || 'Game Over';
+    const winnerName = winningAgent ? `${winningAgent.name} (${winningAgent.model})` : 'No winner';
+    this.logger.log('info', `--- GAME OVER --- Reason: ${reasonMessage}. Winner: ${winnerName}.`);
+
+    // Emit event for UI or other listeners
+    if (this.io) {
+        this.logger.log('info', 'Emitting game-over event via socket.io');
+        this.io.emit('game-over', {
+            winner: this.winner ? {
+                name: this.winner.name,
+                model: this.winner.model
+            } : null,
+            solution: this.solution,
+            reason: reasonMessage
+        });
+    }
+    // Note: Saving results is handled *after* the runGameLoop finishes in server.js
   }
   
   /**
