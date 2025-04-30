@@ -141,7 +141,7 @@ model = art.TrainableModel(
     project="cluedo-art-training", # Project name for organization
     # Choose a base model compatible with ART's local API (e.g., from Hugging Face)
     # Using the same small model as clue-tiny-grpo for comparison
-    base_model="meta-llama/Llama-3.2-1B-Instruct", 
+    base_model="Qwen/Qwen3-4B", 
     # Add any necessary config, e.g., GPU utilization if needed
     # _internal_config={"init_args": {"gpu_memory_utilization": 0.8}},
 )

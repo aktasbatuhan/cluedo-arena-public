@@ -489,7 +489,7 @@ def main():
     wandb_project = "cluedo_grpo"  # Set WandB project name
     device_index = 0
     # Using 1B model for faster loading and less memory consumption
-    model_name = "meta-llama/Llama-3.2-1B-Instruct"  # Switched to 1B model for faster training
+    model_name = "Qwen/Qwen3-4B"  # Switched to 4B model for better results
     checkpoint_path = Path("./output_cluedo")  # Separate output dir
     checkpoint_interval = 20
     train_batch_size = 8  # Reduced for easier startup
@@ -547,7 +547,7 @@ def main():
     print("Loading Cluedo interaction data...")
     # No predicate needed for now, load all data
     # Use a path relative to the current directory
-    prompts_data = read_jsonl("data/cluedo_interactions.jsonl")
+    prompts_data = read_jsonl("/teamspace/studios/this_studio/cluedo-arena-public/tiny-grpo/data/cluedo_interactions.jsonl")
     prompts_list = list(prompts_data) # Load all into memory for DataLoader
     print(f"Loaded {len(prompts_list)} Cluedo interaction examples.")
 
@@ -586,7 +586,7 @@ def main():
     # Training loop
     global_step = 0
     # Adjust total steps based on dataset size and how many times you want to iterate
-    total_training_steps = 500 # Example: Set a fixed number of steps
+    total_training_steps = 500 
 
     for step in range(total_training_steps):
         print(f"--- Step {step + 1} / {total_training_steps} ---")
