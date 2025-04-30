@@ -426,7 +426,19 @@ def calculate_memory_update_reward(completion_text: str, ground_truth_deductions
             return 0.0
             
         # Adjust key based on expected LLM output format (YAML) for memory update
-        predicted_deductions = set(completion_yaml.get("newlyDeducedCards", []))
+        raw_predictions = completion_yaml.get("newlyDeducedCards", [])
+        # Ensure we only add strings to the set, filtering out unhashable types like dicts
+        predicted_deductions = set()
+        if isinstance(raw_predictions, list):
+            for item in raw_predictions:
+                if isinstance(item, str):
+                    predicted_deductions.add(item)
+                # else: # Optionally log skipped items
+                #     print(f"Skipping non-string item in newlyDeducedCards: {item}")
+        else:
+             # Handle case where newlyDeducedCards is not a list
+             print(f"Warning: 'newlyDeducedCards' is not a list in YAML output: {raw_predictions}")
+
         truth_set = set(ground_truth_deductions if ground_truth_deductions else [])
 
         if not predicted_deductions and not truth_set:

@@ -8,6 +8,7 @@ import yaml  # <-- Add YAML import
 
 from dotenv import load_dotenv
 import openai # ART uses openai client interface
+from transformers import AutoTokenizer # <-- Add tokenizer import
 
 # Load environment variables (like OPENAI_API_KEY, potentially needed by ART)
 load_dotenv()
@@ -23,10 +24,22 @@ def calculate_memory_update_reward(completion_text: str, ground_truth_deductions
         if not isinstance(completion_yaml, dict):
              # Penalize if YAML is valid but not a dictionary
              # print(f"YAML content is not a dictionary: {completion_text[:100]}...")
-             return 0.0 
-        
+             return 0.0
+
         # Key updated to match llm.js convention
-        predicted_deductions = set(completion_yaml.get("newlyDeducedCards", [])) 
+        raw_predictions = completion_yaml.get("newlyDeducedCards", [])
+        # Ensure we only add strings to the set, filtering out unhashable types like dicts
+        predicted_deductions = set()
+        if isinstance(raw_predictions, list):
+            for item in raw_predictions:
+                if isinstance(item, str):
+                    predicted_deductions.add(item)
+                # else: # Optionally log skipped items
+                #     print(f"Skipping non-string item in newlyDeducedCards: {item}")
+        else:
+            # Handle case where newlyDeducedCards is not a list (e.g., a string)
+             print(f"Warning: 'newlyDeducedCards' is not a list in YAML output: {raw_predictions}")
+
         truth_set = set(ground_truth_deductions if ground_truth_deductions else [])
 
         if not predicted_deductions and not truth_set:
@@ -206,14 +219,8 @@ async def clue_rollout(
 
     except Exception as e:
         print(f"Error during model generation: {e}")
-        completion_text = "" # Assign empty string on error
-        # Create a dummy choice to avoid downstream errors
-        choice = openai.types.chat.chat_completion.ChatCompletion.Choice(
-             finish_reason="error", 
-             index=0, 
-             message=openai.types.chat.chat_completion_message.ChatCompletionMessage(role="assistant", content=""),
-             logprobs=None
-        )
+        # Return None instead of creating a dummy trajectory
+        return None
 
     # Calculate reward based on interaction type
     reward = 0.0
@@ -249,9 +256,23 @@ async def clue_rollout(
 async def main():
     print("Starting Clue training script using ART...")
     
+    # --- Debug: Check Tokenizer and Model Name ---
+    print(f"Intended base model: {model.base_model}")
+    try:
+        # Load tokenizer for the *intended* base model
+        tokenizer = AutoTokenizer.from_pretrained(model.base_model)
+        print(f"Tokenizer loaded for {model.base_model}. Vocab size: {tokenizer.vocab_size}")
+        # Check for padding token
+        if tokenizer.pad_token is None:
+            print("Warning: Tokenizer does not have a pad token set.")
+            # Consider setting tokenizer.pad_token = tokenizer.eos_token if needed
+    except Exception as e:
+        print(f"Error loading tokenizer for {model.base_model}: {e}")
+    # --- End Debug ---
+    
     # Register the model with the local API before use
     await model.register(art.LocalAPI()) # Use LocalAPI for local training
-    print(f"ART Model '{model.name}' registered with LocalAPI.")
+    print(f"ART Model '{model.name}' registered with LocalAPI.") # This might show the *actual* model ART is using
 
     # 1. Load Data
     # Adjust path if needed, this assumes running from workspace root or ART/examples
@@ -313,13 +334,20 @@ async def main():
             pbar_desc=f"Train Step {i+1}",
         )
         print(f"Gathered {len(train_groups)} training trajectory groups.")
+        
+        # Filter out None results (from rollout errors)
+        valid_train_groups = [group for group in train_groups if group is not None and all(traj is not None for traj in group.trajectories)]
+        print(f"Filtered to {len(valid_train_groups)} valid training trajectory groups.")
 
         # --- Training Step ---
-        if train_groups:
+        if valid_train_groups:
             print(f"Training model...")
-            # Call ART's built-in train function
+            # --- Debug: Check model name before training --- 
+            print(f"Calling model.train() on model named: '{model.name}'") 
+            # --- End Debug ---
+            # Call ART's built-in train function with valid groups
             await model.train(
-                train_groups,
+                valid_train_groups,
                 config=train_config,
             )
             print(f"Training step {i+1} completed.")
@@ -327,7 +355,7 @@ async def main():
             # await model.save_checkpoint() # Removed incorrect call
             await model.delete_checkpoints() # Keep last 2 checkpoints
         else:
-            print("No training groups gathered, skipping training step.")
+            print("No valid training groups gathered, skipping training step.")
 
         # --- Validation Step (Periodically) ---
         if (i + 1) % val_interval == 0 and val_data:
@@ -342,12 +370,16 @@ async def main():
             )
             print(f"Gathered {len(val_groups)} validation trajectory groups.")
             
+            # Filter out None results (from rollout errors)
+            valid_val_groups = [group for group in val_groups if group is not None and all(traj is not None for traj in group.trajectories)]
+            print(f"Filtered to {len(valid_val_groups)} valid validation trajectory groups.")
+            
             # Log validation metrics (ART handles aggregation)
-            if val_groups:
-                await model.log(val_groups)
+            if valid_val_groups:
+                await model.log(valid_val_groups)
                 print("Validation metrics logged.")
             else:
-                 print("No validation groups gathered.")
+                 print("No valid validation groups gathered.")
 
     print("Training finished.")
 
