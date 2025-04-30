@@ -5,6 +5,7 @@ import random
 import re
 from typing import Any, Iterator, Optional
 import os # Add os import
+import yaml # <-- Add YAML import
 
 # Make wandb import optional
 try:
@@ -164,16 +165,13 @@ def rollout(
         dummy_mask = torch.zeros((num_rollouts, 1), dtype=torch.bool, device=device)
         return dummy_seq, dummy_returns, dummy_mask, [""] * num_rollouts
 
-    # 1. format prompt with JSON formatting instructions
+    # 1. format prompt with YAML formatting instructions
     if interaction_type == "memory_update":
-        if not prompt_text.endswith("Respond ONLY with a JSON object."):
-            # Add JSON formatting instruction to the end of the prompt
-            chat_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a JSON object containing newly_deduced_held_cards as an array. Example format: {\"newly_deduced_held_cards\": [\"Card1\", \"Card2\"]}"
-        else:
-            chat_prompt = prompt_text
+        # Add YAML formatting instruction
+        chat_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a YAML object containing the key 'newlyDeducedCards' as a list. Example:\nnewlyDeducedCards:\n  - Card1\n  - Card2"
     else:
-        # For other interaction types, use the prompt as-is
-        chat_prompt = prompt_text
+        # For other interaction types, request generic YAML (though we filtered these out)
+        chat_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a valid YAML object."
 
     # Efficient batched tokenization for GPU
     try:
@@ -420,30 +418,41 @@ def read_prompts(
 # Helper function to calculate reward for memory updates
 def calculate_memory_update_reward(completion_text: str, ground_truth_deductions: list[str]) -> float:
     try:
-        # First attempt: parse as-is
-        completion_json = json.loads(completion_text)
-        # Adjust key based on expected LLM output format for memory update
-        predicted_deductions = set(completion_json.get("newly_deduced_held_cards", []))
+        # Attempt to parse the completion as YAML
+        completion_yaml = yaml.safe_load(completion_text)
+        if not isinstance(completion_yaml, dict):
+            # Penalize if YAML is valid but not a dictionary
+            # print(f"YAML content is not a dictionary: {completion_text[:100]}...")
+            return 0.0
+            
+        # Adjust key based on expected LLM output format (YAML) for memory update
+        predicted_deductions = set(completion_yaml.get("newlyDeducedCards", []))
         truth_set = set(ground_truth_deductions if ground_truth_deductions else [])
 
         if not predicted_deductions and not truth_set:
             return 1.0 # Correctly deduced nothing new when nothing was expected
 
         intersection = len(predicted_deductions.intersection(truth_set))
-        # Use precision: reward based on how many of the *predicted* deductions were correct
-        reward = intersection / len(predicted_deductions) if len(predicted_deductions) > 0 else 0.0
-        # Small bonus if prediction is non-empty and fully correct
-        if len(predicted_deductions) > 0 and intersection == len(truth_set) and intersection == len(predicted_deductions):
-             reward = 1.0
-        # Penalize hallucinating deductions when ground truth is empty? Maybe later.
+        # Using F1 score as reward metric (similar to ART script)
+        precision = intersection / len(predicted_deductions) if len(predicted_deductions) > 0 else 0.0
+        recall = intersection / len(truth_set) if len(truth_set) > 0 else 0.0
+        f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        
+        # Give full reward only if perfect match
+        if len(predicted_deductions) == len(truth_set) and intersection == len(truth_set):
+             return 1.0
+        elif (precision + recall) > 0:
+             return f1
+        elif not predicted_deductions and truth_set:
+             return 0.0
+        elif predicted_deductions and not truth_set:
+             return 0.0
+        else:
+             return 0.0
 
-        return reward
-
-    except json.JSONDecodeError:
-        # Instead of failing, treat free text as a summary and give a small fixed reward
-        print(f"Generating JSON wrapper for text response: {completion_text[:100]}...")
-        # Give a small fixed reward (could change this based on token match heuristics)
-        return 0.02 # Small but non-zero to encourage formatting improvement
+    except yaml.YAMLError:
+        # print(f"YAMLError calculating reward for: {completion_text[:100]}...")
+        return 0.0 # Penalize invalid YAML
     except Exception as e:
         print(f"Warning: Error calculating reward: {e}")
         return 0.0
@@ -452,12 +461,14 @@ def calculate_memory_update_reward(completion_text: str, ground_truth_deductions
 # Helper function for basic reward (e.g., suggestion/accusation format check)
 def calculate_basic_reward(completion_text: str) -> float:
      try:
-        json.loads(completion_text)
-        # Basic reward for outputting valid JSON
-        # Could be extended to check structure against chosen_response later
-        return 0.1
-     except json.JSONDecodeError:
-         return 0.0 # Penalize invalid JSON
+        content = yaml.safe_load(completion_text)
+        # Basic reward for outputting valid YAML (and being a dict/list)
+        if isinstance(content, (dict, list)):
+            return 0.2 # Use 0.2 to match ART script's basic reward
+        else:
+             return 0.05 # Small reward for valid YAML but wrong type
+     except yaml.YAMLError:
+         return 0.0 # Penalize invalid YAML
 
 
 def custom_collate(batch):
@@ -545,19 +556,33 @@ def main():
 
     # Load Cluedo data
     print("Loading Cluedo interaction data...")
-    # No predicate needed for now, load all data
-    # Use a path relative to the current directory
-    prompts_data = read_jsonl("/teamspace/studios/this_studio/cluedo-arena-public/tiny-grpo/data/cluedo_interactions.jsonl")
+    # Use a path relative to this script's location
+    script_dir = Path(__file__).parent
+    data_file = script_dir / "data" / "cluedo_interactions.jsonl"
+    print(f"Attempting to load data from: {data_file}")
+    
+    if not data_file.exists():
+        print(f"Error: Data file not found at {data_file}. Please check the path.")
+        return
+        
+    prompts_data = read_jsonl(data_file)
     prompts_list = list(prompts_data) # Load all into memory for DataLoader
     print(f"Loaded {len(prompts_list)} Cluedo interaction examples.")
 
     if not prompts_list:
-        print("Error: No data loaded. Check data/cluedo_interactions.jsonl path and format.")
+        print("Error: No data loaded from the file.")
         return
 
-    # Note: DataLoader will yield dictionaries from prompts_list
+    # Filter data to only include memory_update interactions
+    memory_update_data = [item for item in prompts_list if item.get("interaction_type") == "memory_update"]
+    print(f"Filtered data to {len(memory_update_data)} memory_update interactions.")
+    if not memory_update_data:
+        print("Error: No memory_update interactions found in the data. Cannot train.")
+        return
+
+    # Note: DataLoader will yield dictionaries from the filtered list
     prompt_loader = DataLoader(
-        prompts_list,
+        memory_update_data, # Use the filtered data
         batch_size=1, # Process one prompt data dict at a time for rollout
         shuffle=True,
         drop_last=True, # Avoid partial batches if rollouts_per_step doesn't divide dataset size

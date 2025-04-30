@@ -4,6 +4,7 @@ import json
 import random
 from pathlib import Path
 from typing import Any, Iterator, TypedDict, Optional
+import yaml  # <-- Add YAML import
 
 from dotenv import load_dotenv
 import openai # ART uses openai client interface
@@ -15,12 +16,17 @@ load_dotenv()
 
 # Helper function to calculate reward for memory updates
 def calculate_memory_update_reward(completion_text: str, ground_truth_deductions: Optional[list[str]]) -> float:
-    """Calculates reward based on correctness of deduced cards in memory updates."""
+    """Calculates reward based on correctness of deduced cards in memory updates (expects YAML)."""
     try:
-        # Attempt to parse the completion as JSON
-        completion_json = json.loads(completion_text)
-        # Key might differ based on how the model is prompted, adjust if needed
-        predicted_deductions = set(completion_json.get("newly_deduced_held_cards", []))
+        # Attempt to parse the completion as YAML
+        completion_yaml = yaml.safe_load(completion_text)
+        if not isinstance(completion_yaml, dict):
+             # Penalize if YAML is valid but not a dictionary
+             # print(f"YAML content is not a dictionary: {completion_text[:100]}...")
+             return 0.0 
+        
+        # Key updated to match llm.js convention
+        predicted_deductions = set(completion_yaml.get("newlyDeducedCards", [])) 
         truth_set = set(ground_truth_deductions if ground_truth_deductions else [])
 
         if not predicted_deductions and not truth_set:
@@ -50,26 +56,28 @@ def calculate_memory_update_reward(completion_text: str, ground_truth_deductions
         else: # Both empty already handled, this case shouldn't be hit
              return 0.0
 
-
-    except json.JSONDecodeError:
-        # Penalize non-JSON output for memory updates, as structure is crucial
-        # print(f"JSONDecodeError calculating reward for: {completion_text[:100]}...")
-        return 0.0 # Strict penalty for invalid JSON
+    except yaml.YAMLError:
+        # Penalize non-YAML output for memory updates
+        # print(f"YAMLError calculating reward for: {completion_text[:100]}...")
+        return 0.0 # Strict penalty for invalid YAML
     except Exception as e:
         print(f"Warning: Error calculating memory update reward: {e}")
         return 0.0
 
 # Helper function for basic reward (e.g., suggestion/accusation format check)
 def calculate_basic_reward(completion_text: str) -> float:
-    """Calculates a basic reward, e.g., for valid JSON format in suggestions/accusations."""
+    """Calculates a basic reward, e.g., for valid YAML format in suggestions/accusations."""
     try:
-        json.loads(completion_text)
-        # Basic reward for outputting valid JSON
-        # Could be extended later to check specific required fields
-        return 0.2 # Small reward for valid JSON structure
-    except json.JSONDecodeError:
-        # print(f"JSONDecodeError calculating basic reward for: {completion_text[:100]}...")
-        return 0.0 # Penalize invalid JSON
+        content = yaml.safe_load(completion_text)
+        # Basic reward for outputting valid YAML (and being a dict/list perhaps)
+        if isinstance(content, (dict, list)):
+            return 0.2 # Small reward for valid YAML structure
+        else:
+             # print(f"YAML content is not dict/list: {completion_text[:100]}...")
+             return 0.05 # Very small reward for valid YAML but wrong type
+    except yaml.YAMLError:
+        # print(f"YAMLError calculating basic reward for: {completion_text[:100]}...")
+        return 0.0 # Penalize invalid YAML
 
 # --- Data Loading ---
 
@@ -161,16 +169,16 @@ async def clue_rollout(
     interaction_type = interaction["interaction_type"]
     ground_truth = interaction["ground_truth_deductions"]
 
-    # Format prompt (similar to clue-tiny-grpo, ensure model knows to output JSON)
+    # Format prompt (similar to clue-tiny-grpo, ensure model knows to output YAML)
     # This might need adjustment based on the base model's instruction following capabilities
     if interaction_type == "memory_update":
-        # Simple instruction addition - might need more robust templating
-        formatted_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a JSON object containing the key 'newly_deduced_held_cards' as an array. Example: {\"newly_deduced_held_cards\": [\"Card1\"]}"
+        # Updated instruction asking for YAML
+        formatted_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a YAML object containing the key 'newlyDeducedCards' as a list. Example:\nnewlyDeducedCards:\n  - Card1\n  - Card2"
     elif interaction_type in ["suggestion", "accusation"]:
-        # Assume these also require JSON? Adjust prompt accordingly.
-         formatted_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a valid JSON object representing your move."
+        # Assume these also require YAML? Adjust prompt accordingly.
+         formatted_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a valid YAML object representing your move."
     else:
-        formatted_prompt = prompt_text # For other types, maybe no strict JSON needed?
+        formatted_prompt = prompt_text # For other types, maybe no strict YAML needed?
 
     messages: art.Messages = [{"role": "user", "content": formatted_prompt}]
 
@@ -247,16 +255,24 @@ async def main():
 
     # 1. Load Data
     # Adjust path if needed, this assumes running from workspace root or ART/examples
-    clue_data = load_clue_data("/teamspace/studios/this_studio/cluedo-arena-public/tiny-grpo/data/cluedo_interactions.jsonl", max_rows=500) # Load subset for faster testing
+    # Use the relative path, load_clue_data will resolve it
+    clue_data = load_clue_data("clue-tiny-grpo/data/cluedo_interactions.jsonl", max_rows=500) # Load subset for faster testing
     if not clue_data:
+        return
+
+    # Filter data to only include memory_update interactions
+    memory_update_data = [item for item in clue_data if item["interaction_type"] == "memory_update"]
+    print(f"Filtered data to {len(memory_update_data)} memory_update interactions.")
+    if not memory_update_data:
+        print("Error: No memory_update interactions found in the data. Cannot train.")
         return
 
     # Example: Split data (simple split)
     random.seed(42)
-    random.shuffle(clue_data)
-    split_idx = int(len(clue_data) * 0.9)
-    train_data = clue_data[:split_idx]
-    val_data = clue_data[split_idx:]
+    random.shuffle(memory_update_data) # Shuffle the filtered data
+    split_idx = int(len(memory_update_data) * 0.9)
+    train_data = memory_update_data[:split_idx] # Use filtered data for train
+    val_data = memory_update_data[split_idx:]   # Use filtered data for val
     print(f"Train size: {len(train_data)}, Validation size: {len(val_data)}")
 
     # 2. Get OpenAI Client from ART Model
