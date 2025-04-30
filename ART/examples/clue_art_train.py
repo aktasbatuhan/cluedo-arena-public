@@ -151,7 +151,7 @@ model = art.TrainableModel(
 async def clue_rollout(
     client: openai.AsyncOpenAI, 
     interaction: ClueInteraction,
-    max_tokens: int = 128, # Max tokens to generate for the response
+    max_tokens: int = 2000, # Max tokens to generate for the response
     temperature: float = 0.7,
     top_p: float = 0.9
 ) -> art.Trajectory:
@@ -182,13 +182,19 @@ async def clue_rollout(
             temperature=temperature,
             top_p=top_p,
             # Ensure the response format is text if not using JSON mode explicitly
-            # response_format={"type": "text"}, 
+            # response_format={"type": "text"},
         )
         choice = chat_completion.choices[0]
         completion_text = choice.message.content
         
         if not isinstance(completion_text, str):
              completion_text = "" # Handle potential None or other types
+
+        # --- DEBUG: Print model output ---
+        print(f"--- Interaction Type: {interaction_type} ---")
+        print(f"Model Completion: {completion_text}")
+        print(f"Ground Truth (Memory): {ground_truth}")
+        # --- END DEBUG ---
 
     except Exception as e:
         print(f"Error during model generation: {e}")
@@ -241,7 +247,7 @@ async def main():
 
     # 1. Load Data
     # Adjust path if needed, this assumes running from workspace root or ART/examples
-    clue_data = load_clue_data("clue-tiny-grpo/data/cluedo_interactions.jsonl", max_rows=500) # Load subset for faster testing
+    clue_data = load_clue_data("/teamspace/studios/this_studio/cluedo-arena-public/tiny-grpo/data/cluedo_interactions.jsonl", max_rows=500) # Load subset for faster testing
     if not clue_data:
         return
 
@@ -302,8 +308,8 @@ async def main():
             )
             print(f"Training step {i+1} completed.")
             # Optionally save checkpoint after training step
-            await model.save_checkpoint()
-            await model.delete_checkpoints(keep=2) # Keep last 2 checkpoints
+            # await model.save_checkpoint() # Removed incorrect call
+            await model.delete_checkpoints() # Keep last 2 checkpoints
         else:
             print("No training groups gathered, skipping training step.")
 
@@ -322,7 +328,7 @@ async def main():
             
             # Log validation metrics (ART handles aggregation)
             if val_groups:
-                await model.log(val_groups, step=i)
+                await model.log(val_groups)
                 print("Validation metrics logged.")
             else:
                  print("No validation groups gathered.")
