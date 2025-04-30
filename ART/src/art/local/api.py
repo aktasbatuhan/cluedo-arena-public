@@ -28,7 +28,7 @@ from .pack import (
     PackedTensors,
     plot_packed_tensors,
 )
-from .tokenize import tokenize_trajectory_groups
+from .art_tokenizer import tokenize_trajectory_groups
 from .checkpoints import (
     delete_checkpoints,
     get_step,
