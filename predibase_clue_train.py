@@ -5,7 +5,9 @@ from pathlib import Path
 from predibase import Predibase, GRPOConfig, RewardFunctionsConfig
 
 # --- Configuration ---
-PREDIBASE_API_KEY="pb_tu9v1NrJV6C_lVuFMH9Uiw"
+PREDIBASE_API_KEY = os.getenv("PREDIBASE_API_KEY")
+if not PREDIBASE_API_KEY:
+    raise ValueError("PREDIBASE_API_KEY environment variable not set.")
 # !! Set this to the exact name given in the Predibase UI !!
 PREDIBASE_DATASET_NAME = "cluedo_interactions_predibase_grpo" # Use the confirmed name
 # !! Replace with the desired Predibase repository name to save the adapter !!
