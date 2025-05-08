@@ -1,3 +1,4 @@
+import unsloth
 import art
 import asyncio
 import json
@@ -162,9 +163,9 @@ model = art.TrainableModel(
     project="cluedo-art-training", # Project name for organization
     # Choose a base model compatible with ART's local API (e.g., from Hugging Face)
     # Using the same small model as clue-tiny-grpo for comparison
-    base_model="Qwen/Qwen2.5-7B-Instruct",
-    # Add GPU config similar to temporal-clue
-    _internal_config={"init_args": {"gpu_memory_utilization": 0.775}},
+    base_model="Qwen/Qwen2.5-3B-Instruct", 
+    # Add any necessary config, e.g., GPU utilization if needed
+    # _internal_config={"init_args": {"gpu_memory_utilization": 0.8}},
 )
 
 # --- Clue Rollout Function ---
@@ -277,7 +278,7 @@ async def main():
     # 1. Load Data
     # Adjust path if needed, this assumes running from workspace root or ART/examples
     # Use the relative path, load_clue_data will resolve it
-    clue_data = load_clue_data("clue-tiny-grpo/data/cluedo_interactions.jsonl", max_rows=500) # Load subset for faster testing
+    clue_data = load_clue_data("/teamspace/studios/this_studio/cluedo-arena-public/tiny-grpo/data/cluedo_interactions.jsonl", max_rows=500) # Load subset for faster testing
     if not clue_data:
         return
 

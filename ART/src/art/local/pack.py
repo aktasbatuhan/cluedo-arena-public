@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from typing import TypedDict
 from typing_extensions import Unpack
 
-from .tokenize import TokenizedResult
+from .art_tokenizer import TokenizedResult
 from ..types import Verbosity
 
 
