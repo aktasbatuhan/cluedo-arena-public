@@ -169,7 +169,7 @@ def rollout(
     if interaction_type == "memory_update":
         # Add YAML formatting instruction
         chat_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a YAML object containing the key 'newlyDeducedCards' as a list. Example:\nnewlyDeducedCards:\n  - Card1\n  - Card2"
-    else:
+        else:
         # For other interaction types, request generic YAML (though we filtered these out)
         chat_prompt = prompt_text + "\n\nIMPORTANT: Respond ONLY with a valid YAML object."
 

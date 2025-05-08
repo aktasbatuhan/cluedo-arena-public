@@ -162,9 +162,9 @@ model = art.TrainableModel(
     project="cluedo-art-training", # Project name for organization
     # Choose a base model compatible with ART's local API (e.g., from Hugging Face)
     # Using the same small model as clue-tiny-grpo for comparison
-    base_model="Qwen/Qwen3-4B", 
-    # Add any necessary config, e.g., GPU utilization if needed
-    # _internal_config={"init_args": {"gpu_memory_utilization": 0.8}},
+    base_model="Qwen/Qwen2.5-7B-Instruct",
+    # Add GPU config similar to temporal-clue
+    _internal_config={"init_args": {"gpu_memory_utilization": 0.775}},
 )
 
 # --- Clue Rollout Function ---
@@ -299,15 +299,15 @@ async def main():
     # 2. Get OpenAI Client from ART Model
     openai_client = model.openai_client()
 
-    # --- Training Loop ---
-    num_training_steps = 100 # Total number of training steps
-    rollouts_per_step = 8  # Number of interactions to collect rollouts for per step
-    group_size = 4 # Number of rollouts per interaction (like in clue-tiny-grpo)
-    val_interval = 10 # How often to run validation
+    # --- Training Loop --- Adjusted hyperparameters ---
+    num_training_steps = 100 # Total number of training steps 
+    rollouts_per_step = 4  # Number of interactions per step 
+    train_group_size = 50 # Number of rollouts per interaction for training 
+    val_group_size = 2 # Number of rollouts per interaction for validation 
+    val_interval = 10 # How often to run validation 
 
-    # Training config for model.train()
-    # We might need to adjust the learning rate
-    train_config = art.TrainConfig(learning_rate=1e-5) 
+    # Training config for model.train() - Updated learning rate
+    train_config = art.TrainConfig(learning_rate=5e-5) 
 
     print(f"Starting training for {num_training_steps} steps...")
     # Resume from the last step if checkpoint exists
@@ -324,11 +324,11 @@ async def main():
         end_idx = start_idx + rollouts_per_step
         train_batch = (train_data * ( (i*rollouts_per_step // len(train_data)) + 2) )[start_idx:end_idx] # Wrap around data
         
-        print(f"Gathering {group_size} rollouts for {len(train_batch)} training interactions...")
+        print(f"Gathering {train_group_size} rollouts for {len(train_batch)} training interactions...")
         train_groups = await art.gather_trajectory_groups(
             (
-                # For each interaction, create a group of `group_size` rollouts
-                art.TrajectoryGroup(clue_rollout(openai_client, interaction) for _ in range(group_size))
+                # For each interaction, create a group of `train_group_size` rollouts
+                art.TrajectoryGroup(clue_rollout(openai_client, interaction) for _ in range(train_group_size))
                 for interaction in train_batch
             ),
             pbar_desc=f"Train Step {i+1}",
@@ -363,7 +363,8 @@ async def main():
             # Gather validation trajectories (usually fewer rollouts per interaction needed)
             val_groups = await art.gather_trajectory_groups(
                 (
-                    art.TrajectoryGroup(clue_rollout(openai_client, interaction) for _ in range(1)) # Only 1 rollout for val
+                    # Use `val_group_size` rollouts for validation
+                    art.TrajectoryGroup(clue_rollout(openai_client, interaction) for _ in range(val_group_size))
                     for interaction in val_data # Use the whole validation set
                 ),
                 pbar_desc=f"Validation Step {i+1}",
@@ -382,6 +383,16 @@ async def main():
                  print("No valid validation groups gathered.")
 
     print("Training finished.")
+    # --- Explicitly save the final checkpoint ---
+    try:
+        print("Saving final model checkpoint...")
+        await model.save_checkpoint()
+        print("Final checkpoint saved successfully.")
+        # You might want to know where it saved. The API might return the path or log it.
+        # If not, you might need to investigate ART's saving mechanism further.
+    except Exception as e:
+        print(f"Error saving final checkpoint: {e}")
+    # --- End Final Save ---
 
 
 if __name__ == "__main__":
