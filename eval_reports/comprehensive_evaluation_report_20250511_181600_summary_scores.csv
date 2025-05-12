@@ -1,0 +1,11 @@
+Model,Average_Precision,Average_Recall,Average_F1_Score,Average_ExactMatch
+Cohere_c4ai-aya-expanse-32b,1.0,0.55,0.58,0.5
+Cohere_c4ai-aya-expanse-8b,0.4,0.45,0.26666666666666666,0.2
+Cohere_command-a-03-2025,0.5,0.5,0.3,0.3
+Cohere_command-r-plus-04-2024,0.5333333333333333,0.525,0.49000000000000005,0.4
+Cohere_command-r7b-12-2024,0.5,0.45,0.27999999999999997,0.2
+OpenRouter_google/gemini-2.0-flash-001,0.9,0.65,0.58,0.5
+OpenRouter_google/gemini-2.5-flash-preview,1.0,0.7,0.7,0.7
+OpenRouter_openai/gpt-4o-mini,0.8,0.85,0.6799999999999999,0.6
+OpenRouter_qwen/qwen-2.5-7b-instruct,0.9,0.425,0.44000000000000006,0.4
+Predibase_clue_final_shot/1,0.9,0.75,0.6799999999999999,0.6

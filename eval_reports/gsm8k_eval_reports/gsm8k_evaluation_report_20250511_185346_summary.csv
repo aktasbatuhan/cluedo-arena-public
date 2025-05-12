@@ -1,0 +1,11 @@
+Model,Average_ExactMatch
+Cohere_c4ai-aya-expanse-32b,0.26
+Cohere_c4ai-aya-expanse-8b,0.12
+Cohere_command-a-03-2025,0.32
+Cohere_command-r-plus-04-2024,0.12
+Cohere_command-r7b-12-2024,0.06
+OpenRouter_google/gemini-2.0-flash-001,0.44
+OpenRouter_google/gemini-2.5-flash-preview,0.0
+OpenRouter_openai/gpt-4o-mini,0.3
+OpenRouter_qwen/qwen-2.5-7b-instruct,0.14
+Predibase_clue_final_shot/1,0.1

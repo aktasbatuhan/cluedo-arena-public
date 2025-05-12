@@ -1,5 +1,0 @@
-{
-  "watch": ["src"],
-  "ext": "js,json",
-  "ignore": ["*.log", "logs/*", "game_results.json", "*.json.gz"]
-} 

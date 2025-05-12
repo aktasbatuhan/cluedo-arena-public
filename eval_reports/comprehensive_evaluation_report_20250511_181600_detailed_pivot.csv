@@ -1,0 +1,353 @@
+prompt_id,prompt_text,ground_truth_str,Cohere_c4ai-aya-expanse-32b_ExactMatch,Cohere_c4ai-aya-expanse-8b_ExactMatch,Cohere_command-a-03-2025_ExactMatch,Cohere_command-r-plus-04-2024_ExactMatch,Cohere_command-r7b-12-2024_ExactMatch,OpenRouter_google/gemini-2.0-flash-001_ExactMatch,OpenRouter_google/gemini-2.5-flash-preview_ExactMatch,OpenRouter_openai/gpt-4o-mini_ExactMatch,OpenRouter_qwen/qwen-2.5-7b-instruct_ExactMatch,Predibase_clue_final_shot/1_ExactMatch,Cohere_c4ai-aya-expanse-32b_F1,Cohere_c4ai-aya-expanse-8b_F1,Cohere_command-a-03-2025_F1,Cohere_command-r-plus-04-2024_F1,Cohere_command-r7b-12-2024_F1,OpenRouter_google/gemini-2.0-flash-001_F1,OpenRouter_google/gemini-2.5-flash-preview_F1,OpenRouter_openai/gpt-4o-mini_F1,OpenRouter_qwen/qwen-2.5-7b-instruct_F1,Predibase_clue_final_shot/1_F1,Cohere_c4ai-aya-expanse-32b_precision,Cohere_c4ai-aya-expanse-8b_precision,Cohere_command-a-03-2025_precision,Cohere_command-r-plus-04-2024_precision,Cohere_command-r7b-12-2024_precision,OpenRouter_google/gemini-2.0-flash-001_precision,OpenRouter_google/gemini-2.5-flash-preview_precision,OpenRouter_openai/gpt-4o-mini_precision,OpenRouter_qwen/qwen-2.5-7b-instruct_precision,Predibase_clue_final_shot/1_precision,Cohere_c4ai-aya-expanse-32b_recall,Cohere_c4ai-aya-expanse-8b_recall,Cohere_command-a-03-2025_recall,Cohere_command-r-plus-04-2024_recall,Cohere_command-r7b-12-2024_recall,OpenRouter_google/gemini-2.0-flash-001_recall,OpenRouter_google/gemini-2.5-flash-preview_recall,OpenRouter_openai/gpt-4o-mini_recall,OpenRouter_qwen/qwen-2.5-7b-instruct_recall,Predibase_clue_final_shot/1_recall
+jsonl_line_14,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Yellow Agent. Analyze the events from your last turn (Turn 7) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Events from THIS turn:
+I suggested: Professor Plum, Lead Pipe, Hall.
+Purple Agent showed me the card: Lead Pipe.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+Your current knowledge:
+Cards in my hand: Rope, Dining Room, Candlestick
+Known Eliminated Cards: Kitchen, Candlestick, Mrs. Peacock, Lead Pipe
+Your most recent memory note:
+My hand contains Rope, Dining Room, and Candlestick - these cannot be part of the solution. From previous turns, Kitchen and Mrs. Peacock were definitively eliminated. In a prior turn, Red suggested Mrs. Peacock/Candlestick/Kitchen and Blue showed a card - since I have Candlestick and Kitchen was eliminated, Blue likely showed Mrs. Peacock. When Blue later suggested Mrs. Peacock/Lead Pipe/Dining Room, Green showed a card - since I have Dining Room and Mrs. Peacock is eliminated, Green must have shown Lead Pipe or possibly also holds Mrs. Peacock, but I cannot be certain which. In this latest turn, I showed Dining Room to Green when they suggested Miss Scarlet/Lead Pipe/Dining Room. Current definitively eliminated cards are: Rope, Dining Room, Candlestick (my hand), plus Kitchen and Mrs. Peacock from previous deductions.","[""Lead Pipe""]",1.0,1.0,0.0,0.0,1.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.5,1.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.3333333333333333,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,1.0,1.0,0.0,1.0,1.0,1.0,1.0
+jsonl_line_15,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Purple Agent. Analyze the events from your last turn (Turn 9) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Events from THIS turn:
+I suggested: Professor Plum, Candlestick, Lounge.
+Orange Agent showed me the card: Lounge.
+
+Your current knowledge:
+Cards in my hand: Miss Scarlet, Hall, Lead Pipe
+Known Eliminated Cards: Kitchen, Mrs. Peacock, Dining Room, Lounge
+Your most recent memory note:
+Current Understanding: - Cards definitively not in solution: * In my hand: Miss Scarlet, Hall, Lead Pipe * Previously eliminated: Kitchen, Mrs. Peacock, Dining Room
+Key deduction chains: - Earlier established: * Blue has either Mrs. Peacock or Candlestick (from Red's suggestion) * Green showed a card to Blue's (Mrs. Peacock, Lead Pipe, Dining Room) suggestion * Since I hold Lead Pipe and Dining Room was eliminated, Green must have shown Mrs. Peacock * This confirms Mrs. Peacock is held by Green
+Latest turn analysis: - Yellow suggested Professor Plum, Lead Pipe, Hall - I showed Lead Pipe to Yellow - No new deductions possible from this interaction
+Remaining uncertainties: - Still cannot determine if Blue holds Candlestick - Professor Plum's location unknown - Many other cards' locations still unknown
+Total eliminated cards remain at 6: Miss Scarlet, Hall, Lead Pipe (my hand), plus Kitchen, Mrs. Peacock, Dining Room (previously eliminated)
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.","[""Lounge""]",0.0,0.0,1.0,1.0,0.0,0.0,0.0,1.0,0.0,1.0,0.0,0.0,1.0,1.0,0.0,0.0,0.0,1.0,0.0,1.0,1.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.0,1.0,1.0,0.0,0.0,0.0,1.0,0.0,1.0
+jsonl_line_18,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Orange Agent. Analyze the events from your last turn (Turn 15) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+Your current knowledge:
+Cards in my hand: Lounge, Library, Colonel Mustard
+Known Eliminated Cards: Kitchen, Mrs. Peacock, Dining Room, Lead Pipe, Professor Plum, Candlestick
+Your most recent memory note:
+ELIMINATED CARDS: - In my hand: Lounge, Library, Colonel Mustard - Previously confirmed: Kitchen, Mrs. Peacock, Dining Room, Lead Pipe, Professor Plum
+KEY PATTERNS & INSIGHTS: 1. Weapon patterns: - Candlestick appears frequently in suggestions without confirmation - Lead Pipe is eliminated - Other weapons have been suggested less frequently - Wrench just appeared in Red's suggestion
+2. Room patterns: - Several rooms remain unexplored (Study, Conservatory, Ballroom) - Kitchen, Dining Room are eliminated - Hall has been featured in Yellow's recent suggestions
+3. Suspect patterns: - Professor Plum and Mrs. Peacock are eliminated - Miss Scarlet was previously suggested by Green - Colonel Mustard (in my hand) just suggested again by Red
+STRATEGY FOCUS: - Continue monitoring repeated suggestions - Watch for players suggesting previously shown cards - Pay particular attention to weapon suggestions due to their relative infrequency - Track unexplored rooms - Note that Red just suggested two known eliminated cards (Kitchen and Colonel Mustard) - this might be significant
+
+Events from THIS turn:
+Blue Agent suggested: Miss Scarlet, Candlestick, Dining Room.
+Yellow Agent showed a card to Blue Agent (you did not see the card).",[],1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,1.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0
+jsonl_line_29,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+You are Red Agent. Analyze the events from your last turn (Turn 1) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+Events from THIS turn:
+I suggested: Colonel Mustard, Lead Pipe, Conservatory.
+Blue Agent showed me the card: Lead Pipe.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Your current knowledge:
+Cards in my hand: Dining Room, Ballroom, Conservatory
+Known Eliminated Cards: Lead Pipe
+Your most recent memory note:
+(No previous memory summary)","[""Dining Room"", ""Ballroom"", ""Conservatory"", ""Lead Pipe""]",0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.4,0.0,0.0,0.4,0.4,0.4,0.0,0.4,0.0,0.4,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,1.0,0.25,0.0,0.0,0.25,0.25,0.25,0.0,0.25,0.0,0.25
+jsonl_line_32,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Green Agent. Analyze the events from your last turn (Turn 5) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Your current knowledge:
+Cards in my hand: Professor Plum, Colonel Mustard, Lounge
+Known Eliminated Cards: Lead Pipe, Colonel Mustard, Candlestick, Study, Mrs. White
+Your most recent memory note:
+I hold Professor Plum, Colonel Mustard, and Lounge. From Turn 1, I know Red Agent suggested Colonel Mustard, Lead Pipe, and Conservatory, with Blue Agent showing one unknown card (either Colonel Mustard or Conservatory). Just now in Turn 3, Blue Agent suggested Professor Plum, Candlestick, and Study. I showed Professor Plum, and no other cards were shown. This proves Candlestick and Study cannot be part of the solution since no one else could show them. Total eliminated cards are now: Colonel Mustard, Professor Plum, Lounge (my hand), Lead Pipe (previously eliminated), plus Candlestick and Study (newly deduced). Additionally, one of either Colonel Mustard or Conservatory must be held by Blue Agent based on Turn 1's interaction, but I cannot definitively determine which one (though since I have Colonel Mustard, it was likely Conservatory that was shown).
+
+Events from THIS turn:
+I suggested: Mrs. White, Revolver, Dining Room.
+Purple Agent showed me the card: Mrs. White.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.","[""Mrs. White""]",1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,0.0,1.0,1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,0.0,1.0,1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,0.0,1.0
+jsonl_line_36,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Red Agent. Analyze the events from your last turn (Turn 13) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Events from THIS turn:
+I suggested: Miss Scarlet, Wrench, Conservatory.
+Blue Agent showed me the card: Wrench.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+Your current knowledge:
+Cards in my hand: Dining Room, Ballroom, Conservatory
+Known Eliminated Cards: Lead Pipe, Conservatory, Professor Plum, Mrs. White, Candlestick, Billiard Room, Wrench
+Your most recent memory note:
+Current state of knowledge: - Eliminated Cards (8 total): * In my hand: Dining Room, Ballroom, Conservatory * Previously deduced: Lead Pipe (shown by Blue T1), Professor Plum (Blue/Green interaction), Mrs. White (Green/Purple interaction), Candlestick (Yellow/Orange interaction), Billiard Room (Purple/Orange interaction)
+Key tracking points: 1. Murder room must be Kitchen, Hall, Lounge, Library, or Study (all others eliminated) 2. Three weapons confirmed not involved: Lead Pipe, Candlestick 3. Colonel Mustard continues to appear in suggestions but remains unconfirmed 4. Study is confirmed in Green's hand (from previous deduction) 5. Purple holds either Mrs. White or Revolver (possibly both) 6. Orange has been confirmed to hold at least one of: Colonel Mustard, Candlestick, Kitchen 7. Orange just suggested Colonel Mustard/Revolver/Ballroom - I showed Ballroom, so Orange now knows this card
+Investigation priorities: - Focus on remaining unconfirmed rooms (Kitchen, Hall, Lounge, Library) - Continue monitoring Colonel Mustard suggestions - Pay attention to undermentioned suspects (Miss Scarlet, Mr. Green) - Track remaining weapons (Rope, Wrench, Revolver) - Monitor Orange's suggestions to help narrow down their hand composition
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.","[""Wrench""]",0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,1.0,1.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,1.0
+jsonl_line_4,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Yellow Agent. Analyze the events from your last turn (Turn 7) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Your current knowledge:
+Cards in my hand: Revolver, Kitchen, Library
+Known Eliminated Cards: Study, Dagger, Kitchen, Candlestick, Mrs. Peacock
+Your most recent memory note:
+Current eliminated cards: Revolver, Kitchen, Library (in my hand), Study, Dagger, Candlestick (deduced). From Turn 1, Blue Agent showed either Professor Plum or Candlestick to Red Agent in response to Professor Plum, Candlestick, Study suggestion - now we know it was specifically Candlestick. From Turn 3, when Blue Agent suggested Miss Scarlet, Dagger, Lounge, Green Agent showed either Miss Scarlet or Lounge (since Dagger was eliminated). In Turn 5, I showed Kitchen to Green Agent who suggested Miss Scarlet, Candlestick, Kitchen. Notable insight: The repeated appearance of Candlestick in suggestions, combined with Turn 1's interaction, allowed us to definitively deduce it was shown in Turn 1. Still cannot determine whether Miss Scarlet or Lounge was shown in Turn 3's interaction.
+
+Events from THIS turn:
+I suggested: Mrs. Peacock, Lead Pipe, Conservatory.
+Purple Agent showed me the card: Mrs. Peacock.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.","[""Mrs. Peacock""]",1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0
+jsonl_line_70,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+You are Red Agent. Analyze the events from your last turn (Turn 1) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+Events from THIS turn:
+I suggested: Miss Scarlet, Dagger, Dining Room.
+Green Agent showed me the card: Dagger.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+Your current knowledge:
+Cards in my hand: Kitchen, Revolver, Wrench
+Known Eliminated Cards: Dagger
+Your most recent memory note:
+(No previous memory summary)
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.","[""Kitchen"", ""Revolver"", ""Wrench"", ""Dagger""]",0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.4,0.6666666666666666,0.0,0.0,0.4,0.4,0.0,0.4,0.4,0.4,1.0,1.0,1.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,0.25,0.5,0.0,0.0,0.25,0.25,0.0,0.25,0.25,0.25
+jsonl_line_82,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Orange Agent. Analyze the events from your last turn (Turn 17) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+Your current knowledge:
+Cards in my hand: Dining Room, Billiard Room, Conservatory
+Known Eliminated Cards: Dagger, Dining Room, Miss Scarlet, Colonel Mustard, Mrs. Peacock, Professor Plum, Mr. Green, Kitchen
+Your most recent memory note:
+ELIMINATED CARDS: - In my hand: Dining Room, Billiard Room, Conservatory - Definitively shown/deduced: Miss Scarlet, Colonel Mustard, Mrs. Peacock, Dagger, Professor Plum, Mr. Green
+KEY KNOWLEDGE: 1. Professor Plum is confirmed to be held by Yellow Agent 2. Candlestick continues to appear frequently: - Multiple suggestions involving it by Purple and now Blue - Blue previously showed a card for Mrs. Peacock/Candlestick/Study suggestion - Yellow has shown cards for Candlestick suggestions multiple times - Still cannot definitively determine its location 3. Blue's latest suggestion using Mrs. White is notable as one of few suggestions with this suspect
+PATTERN ANALYSIS: - Players continue strategic use of known eliminated cards - Blue's suggestion of Conservatory (which I had to show) might indicate they're trying to identify card holders - Candlestick remains a frequently suggested weapon, appearing in suggestions from multiple players
+UNCERTAINTIES: - Cannot definitively determine Candlestick's location despite its frequent appearance - Mrs. White's status remains unclear - Study's location still uncertain despite previous suggestions
+NEXT STEPS: - Continue monitoring Candlestick-related suggestions and responses - Pay attention to suggestions involving Mrs. White as this suspect appears less frequently
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+Events from THIS turn:
+Green Agent suggested: Mrs. White, Candlestick, Kitchen.
+Red Agent showed a card to Green Agent (you did not see the card).",[],1.0,0.0,0.0,1.0,0.0,1.0,1.0,0.0,1.0,1.0,1.0,0.0,0.0,1.0,0.0,1.0,1.0,0.0,1.0,1.0,1.0,0.0,0.0,1.0,0.0,1.0,1.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0
+jsonl_line_87,"You are an AI agent playing the board game Cluedo (also known as Clue), a deduction game where players try to determine the suspect, weapon, and room of a crime. Your task is to update your memory and deductions based on new events. Respond ONLY with a YAML object.
+
+Important: For this memory update, do NOT list cards that are already in your hand as 'newlyDeducedCards'. Focus ONLY on cards that you have deduced for the first time based on the game events from *this* turn or by logical inference from other players' actions or revealed cards. Cards from your own hand should already be part of your permanent memory and not re-stated as 'newly deduced' in this update. 
+
+You are Green Agent. Analyze the events from your last turn (Turn 5) and update your memory and deductions.
+
+WHAT IS A DEDUCTION:
+A deduction is a card that you can definitively conclude is NOT part of the murder solution. Deduce cards when:
+1. It's in your hand.
+2. Another player shows it to you.
+3. You can logically prove it must be held by a specific player or eliminated.
+
+Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+Events from THIS turn:
+I suggested: Colonel Mustard, Lead Pipe, Hall.
+Yellow Agent showed me the card: Hall.
+
+Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+
+Important: In your response for `newlyDeducedCards`, list only those cards that became definitively known as 'not part of the solution' *during this specific turn's events*. Do not re-list cards from your hand or other pre-existing knowledge if their status as a deduction was already established *before* this turn's events.
+
+Remember: A deduction must be 100% certain.
+
+newlyDeducedCards:
+  - <string> # Card name, or empty list if none
+reasoning: <string> # Explain exactly how you deduced each new card
+memorySummary: <string> # DETAILED summary of your CURRENT understanding. Include ALL known eliminated cards (hand + deduced), suspicions, and key insights from the game history.
+
+Your current knowledge:
+Cards in my hand: Mrs. White, Rope, Mr. Green
+Known Eliminated Cards: Candlestick, Hall
+Your most recent memory note:
+Known eliminated cards: - In my hand: Mrs. White, Rope, Mr. Green - Previously eliminated: Candlestick
+Key observations and insights: 1. Orange Agent has at least one of: Colonel Mustard or Billiard Room (from showing a card to Red's earlier suggestion) 2. Red received confirmation of one card from their suggestion (Colonel Mustard, Candlestick, Billiard Room), but I don't know which one 3. Blue Agent now knows Mrs. White is not the solution (since I just showed it)
+No additional definitive deductions can be made at this time. The turn events (Blue's suggestion and my showing Mrs. White) only confirmed information I already knew since Mrs. White is in my hand.","[""Hall""]",0.0,1.0,1.0,0.0,0.0,1.0,1.0,1.0,0.0,0.0,0.0,1.0,1.0,0.0,0.0,1.0,1.0,1.0,0.0,0.0,1.0,1.0,1.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,0.0,1.0,1.0,0.0,0.0,1.0,1.0,1.0,0.0,0.0

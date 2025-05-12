@@ -190,4 +190,3 @@ AI Cluedo is a web-based implementation of the classic board game Cluedo where A
 - Performance benchmarks
 - User interface testing
 - Documentation review
-

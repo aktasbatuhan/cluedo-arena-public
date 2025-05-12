@@ -1,0 +1,44 @@
+{
+  "name": "cluedo-arena-public",
+  "version": "1.0.0",
+  "description": "A simulation environment for comparing LLM performance in the game Cluedo (Clue).",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon --ignore '*.log' --ignore 'logs/*' --ignore 'game_results.json' src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "run-games": "node src/index.js --run-games",
+    "run-games:3": "node src/index.js --run-games --num-games=3",
+    "run-games:openrouter": "node src/index.js --run-games --num-games=3 --llm-backend=openrouter"
+  },
+  "keywords": [
+    "cluedo",
+    "clue",
+    "llm",
+    "ai",
+    "simulation",
+    "benchmark"
+  ],
+  "author": "Batuhan Aktas",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "nodemon": "^3.0.2"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "axios": "^1.7.2",
+    "cohere-ai": "^7.10.0",
+    "commander": "^13.1.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "js-yaml": "^4.1.0",
+    "mongoose": "^8.0.2",
+    "openai": "^4.98.0",
+    "socket.io": "^4.8.1",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^4.7.1"
+  }
+}
