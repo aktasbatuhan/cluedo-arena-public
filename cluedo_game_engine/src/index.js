@@ -19,7 +19,7 @@ async function runAutomatedGames(numGames) {
 }
 
 async function main() {
-  // Check command line arguments
+  
   const runGamesArg = process.argv.find(arg => arg === '--run-games');
   const numGamesArg = process.argv.find(arg => arg.startsWith('--num-games='));
   const backendArg = process.argv.find(arg => arg.startsWith('--llm-backend='));

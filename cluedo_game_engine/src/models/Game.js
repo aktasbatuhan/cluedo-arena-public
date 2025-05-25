@@ -183,7 +183,6 @@ export class Game extends EventEmitter {
     return array;
   }
 
-  // Add this method to get current game state
   getGameState() {
     return {
       currentTurn: this.currentTurn,
@@ -246,6 +245,19 @@ export class Game extends EventEmitter {
                 reasoning: suggestion.reasoning || 'No reasoning provided',
                 timestamp: new Date()
             });
+
+            if (suggestion && suggestion.suspect && suggestion.weapon && suggestion.room) { // Check for a valid suggestion
+                this.turnHistory.push({
+                    turnNumber: this.currentTurn, // Record with the current turn number
+                    agent: currentAgent.name,
+                    action: 'suggestion',
+                    suggestion: {
+                        suspect: suggestion.suspect,
+                        weapon: suggestion.weapon,
+                        room: suggestion.room
+                    }
+                });
+            }
         }
 
         // 2. Process challenges
@@ -952,13 +964,11 @@ export class Game extends EventEmitter {
       this.phase = 'night';
     }
     
-    // Should add immediate completion check after phase change
     if (this.checkGameCompletion()) {
       await this.endGame();
     }
   }
 
-  // Add this method to the Game class
   nextTurn() {
     // Increment turn counter
     this.currentTurn++;
@@ -986,7 +996,6 @@ export class Game extends EventEmitter {
     }
   }
 
-  // Add this method to the Game class
   checkAccusation(agent, suspect, weapon, room) {
     const isCorrect =
       suspect === this.solution.suspect &&
@@ -1081,7 +1090,6 @@ export class Game extends EventEmitter {
     }
   }
 
-  // Add helper method for formatting event messages
   formatEventMessage(event) {
     switch (event.type) {
       case 'SOLUTION':

@@ -56,16 +56,6 @@ body {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
-.room[data-room="Kitchen"] { border-left: 4px solid #ff6b6b; }
-.room[data-room="Ballroom"] { border-left: 4px solid #4ecdc4; }
-.room[data-room="Conservatory"] { border-left: 4px solid #7bed9f; }
-.room[data-room="Dining"] { border-left: 4px solid #ffeaa7; }
-.room[data-room="Billiards"] { border-left: 4px solid #a55eea; }
-.room[data-room="Library"] { border-left: 4px solid #ff9f43; }
-.room[data-room="Lounge"] { border-left: 4px solid #74b9ff; }
-.room[data-room="Hall"] { border-left: 4px solid #fd79a8; }
-.room[data-room="Study"] { border-left: 4px solid #81ecec; }
-
 .game-info {
   display: flex;
   flex-direction: column;
@@ -462,6 +452,7 @@ body {
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
   z-index: 1000;
   width: 300px;
+  display: none;
 }
 
 .shown-card-entry {

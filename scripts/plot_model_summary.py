@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Load the summary scores CSV
-df = pd.read_csv("/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/results/evaluation_reports/all_providers_default_eval/comprehensive_evaluation_report_20250511_162229_summary_scores.csv")
+df = pd.read_csv("*/results/evaluation_reports/all_providers_default_eval/comprehensive_evaluation_report_20250511_162229_summary_scores.csv")
 
 # Set up the plot style
 sns.set(style="whitegrid")

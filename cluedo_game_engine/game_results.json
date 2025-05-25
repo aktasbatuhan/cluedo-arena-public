@@ -1,0 +1,47 @@
+[
+  {
+    "winner": {
+      "name": "Green Agent",
+      "model": "cohere/command-a"
+    },
+    "players": [
+      {
+        "name": "Red Agent",
+        "model": "openai/gpt-4o-2024-11-20",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Blue Agent",
+        "model": "anthropic/claude-3.5-sonnet",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Green Agent",
+        "model": "cohere/command-a",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Yellow Agent",
+        "model": "cohere/command-r-plus",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Purple Agent",
+        "model": "google/gemini-2.5-flash-preview",
+        "missedOpportunities": []
+      },
+      {
+        "name": "Orange Agent",
+        "model": "cohere/command-r-plus",
+        "missedOpportunities": []
+      }
+    ],
+    "timestamp": "2025-05-12T05:33:02.411Z",
+    "solution": {
+      "suspect": "Mrs. Peacock",
+      "weapon": "Wrench",
+      "room": "Billiard Room"
+    },
+    "totalTurns": 21
+  }
+]

@@ -37,8 +37,8 @@ OPENROUTER_MODEL_LIST = [
 ]
 
 # MODIFIED: Changed to reflect the new primary input JSON file
-DEFAULT_INPUT_JSON_PATH = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/data/llm_interactions.json"
-DEFAULT_OUTPUT_DIR = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/results/evaluation_reports/"
+DEFAULT_INPUT_JSON_PATH = "*/cluedo-arena-public/data/llm_interactions.json"
+DEFAULT_OUTPUT_DIR = "*/cluedo-arena-public/results/evaluation_reports/"
 
 # ADDED: Context for Cluedo prompts
 CLUE_CONTEXT = (

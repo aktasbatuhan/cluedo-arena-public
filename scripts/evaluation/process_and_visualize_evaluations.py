@@ -11,11 +11,11 @@ import argparse
 
 # --- Configuration ---
 # File paths (can be overridden by command-line arguments)
-INPUT_CSV_REPORT_PATH = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/results/evaluation_reports/comprehensive_evaluation_report_20250510_160744.csv"
-INPUT_JSON_REPORT_PATH = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/results/evaluation_reports/comprehensive_evaluation_report_20250510_160744.json"
-OUTPUT_DETAILED_CSV_PATH = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/results/evaluation_reports/evaluation_report_detailed.csv"
-OUTPUT_SUMMARY_CSV_PATH = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/results/evaluation_reports/evaluation_summary_scores.csv"
-OUTPUT_CHART_DIR = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/results/evaluation_charts"
+INPUT_CSV_REPORT_PATH = "*/cluedo-arena-public/results/evaluation_reports/comprehensive_evaluation_report_20250510_160744.csv"
+INPUT_JSON_REPORT_PATH = "*/cluedo-arena-public/results/evaluation_reports/comprehensive_evaluation_report_20250510_160744.json"
+OUTPUT_DETAILED_CSV_PATH = "*/cluedo-arena-public/results/evaluation_reports/evaluation_report_detailed.csv"
+OUTPUT_SUMMARY_CSV_PATH = "*/cluedo-arena-public/results/evaluation_reports/evaluation_summary_scores.csv"
+OUTPUT_CHART_DIR = "*/cluedo-arena-public/results/evaluation_charts"
 
 # --- Helper Functions for Scoring ---
 

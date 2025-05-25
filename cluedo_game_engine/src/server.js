@@ -14,7 +14,8 @@ export async function startServer() {
     options: {
       games: { type: 'string' }, // --games=10
       mode: { type: 'string' }   // --mode=batch
-    }
+    },
+    strict: false // Allow unknown options
   });
 
   // If batch mode is specified, run multiple games

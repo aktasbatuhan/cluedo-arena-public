@@ -35,11 +35,11 @@ logger.info(`Using LLM Backend: ${LLM_BACKEND}`);
  */
 export const MODEL_LIST = [
   'anthropic/claude-3.5-sonnet',          
-  'anthropic/claude-3.5-sonnet',     
-  'anthropic/claude-3.5-sonnet',      
-  'anthropic/claude-3.5-sonnet',          
-  'anthropic/claude-3.5-sonnet',     
-  'anthropic/claude-3.5-sonnet'     
+  'cohere/command-a',     
+  'cohere/command-r-plus',      
+  'cohere/command-r-plus',          
+  'google/gemini-2.5-flash-preview',     
+  'openai/gpt-4o-2024-11-20'     
 ];
 
 // Initialize JSON schema validator
@@ -195,7 +195,7 @@ function getBackendConfig(agentModel) {
 }
 
 export class LLMService {
-  static #currentBackend = 'cohere'; // Private static field for the current backend
+  static #currentBackend = 'openrouter'; // Private static field for the current backend
   static #cohereClient = null;
   static #openRouterClient = null;
 

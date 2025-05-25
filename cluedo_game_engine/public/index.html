@@ -73,7 +73,6 @@
   <script>
     const socket = io();
     
-    // Add mode selection handlers
     function startGame(mode) {
       document.getElementById('mode-selection').classList.add('hidden');
       document.getElementById('game-container').classList.remove('hidden');
@@ -135,19 +134,19 @@
       logElement.insertAdjacentHTML('afterbegin', content);
     });
 
-    // Update game state
+    
     socket.on('game-state', (state) => {
-      // Update turn number
+      
       const currentTurn = document.getElementById('current-turn');
       currentTurn.innerHTML = `Turn <span class="current-number">${state.currentTurn || 0}</span>`;
       
-      // Update solution display if available
+      
       if (state.solution) {
         const solutionDisplay = document.getElementById('solution-display');
         solutionDisplay.textContent = `${state.solution.suspect} in the ${state.solution.room} with the ${state.solution.weapon}`;
       }
       
-      // Update agents list with proper turn highlighting
+      
       const playersList = document.getElementById('players-list');
       playersList.innerHTML = state.agents.map(agent => `
         <div class="player ${agent.isAlive ? 'active' : 'eliminated'} ${agent.name === state.activeAgent ? 'current-turn' : ''}">
@@ -163,11 +162,11 @@
         </div>
       `).join('');
 
-      // Update game board - highlight suggested rooms
+      
       updateGameBoard(state.turnHistory);
     });
 
-    // Add specific handler for solution
+    
     socket.on('game-solution', (solution) => {
       const solutionDisplay = document.getElementById('solution-display');
       solutionDisplay.textContent = `${solution.suspect} in the ${solution.room} with the ${solution.weapon}`;

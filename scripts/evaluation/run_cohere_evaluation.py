@@ -17,8 +17,8 @@ COHERE_MODEL_LIST = [
 ]
 
 # Default report file paths (can be overridden by command-line arguments)
-DEFAULT_CSV_REPORT_PATH = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/evaluation_report.csv"
-DEFAULT_JSON_REPORT_PATH = "/Users/batuhanaktas/Desktop/personal/cluedo-arena-public/evaluation_report.json"
+DEFAULT_CSV_REPORT_PATH = "*/cluedo-arena-public/evaluation_report.csv"
+DEFAULT_JSON_REPORT_PATH = "*/cluedo-arena-public/evaluation_report.json"
 
 # Column name in the CSV that contains the prompts
 # This might need to be adjusted based on the actual CSV structure
