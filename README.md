@@ -210,4 +210,122 @@ When it's an agent's turn to make a suggestion, the game engine constructs a det
 
 *   **Example Suggestion Prompt (Simplified):**
 
+    ```text
+    You are the Cluedo agent Red Agent. Your turn 3.
+    Your hand: Miss Scarlet, Candlestick, Kitchen.
+    Your current location: Lounge.
+    Available Rooms: Kitchen, Ballroom, Conservatory, Dining Room, Billiard Room, Library, Lounge, Hall, Study
+
+    Your knowledge:
+    Known cards held: Miss Scarlet, Candlestick, Kitchen
+    Eliminated Cards (Not in Solution): Colonel Mustard, Rope
+    Suspected Cards: {}
+    Current Deductions Summary: I know Colonel Mustard and Rope are not solution cards.
+    Turn History Highlights:
+    Blue Agent suggested: Mr. Green, Wrench, Library. Yellow Agent showed Blue Agent a card.
+
+    Based on your knowledge and location (Lounge), make a strategic suggestion (suspect, weapon, room).
+    The suggested room MUST be your current location: Lounge.
+    Your goal is to gain new information.
+
+    Respond ONLY with a YAML object in the following format. Provide concise reasoning.
+
+    suspect: <string, one of available suspects>
+    weapon: <string, one of available weapons>
+    room: <string, MUST be Lounge>
+    reasoning: <string, your detailed thought process>
     ```
+
+*   **Example LLM YAML Response for Suggestion:**
+
+    ```yaml
+    suspect: Professor Plum
+    weapon: Lead Pipe
+    room: Lounge
+    reasoning: "I am in the Lounge. Professor Plum and Lead Pipe are cards I don't have and haven't seen. Suggesting them might force another player to reveal if they hold one of these cards, or if no one challenges, it increases my suspicion for these cards."
+    ```
+
+**2. Updating Memory**
+
+After each turn's events (suggestion and any challenge), all agents update their memory. The LLM is prompted to process these events and deduce new information.
+
+*   **Example Memory Update Prompt (Simplified for an observing agent):**
+
+    ```text
+    You are Green Agent. Analyze the events from Red Agent's last turn (Turn 3) and update your memory and deductions.
+
+    WHAT IS A DEDUCTION:
+    A deduction is a card that you can definitively conclude is NOT part of the murder solution.
+
+    Your current knowledge:
+    Cards in my hand: Mr. Green, Library, Wrench
+    Known Eliminated Cards: None
+    Your most recent memory note: (No previous memory summary)
+
+    Events from THIS turn:
+    Red Agent suggested: Professor Plum, Lead Pipe, Lounge.
+    Purple Agent showed Red Agent a card (you did not see the card).
+
+    Based ONLY on the information above, what new cards can you definitively deduce are NOT part of the solution?
+    Remember: A deduction must be 100% certain.
+
+    Respond ONLY with a YAML object in the following format. Provide a DETAILED summary.
+
+    newlyDeducedCards:
+      - <string> # Card name, or empty list if none
+    reasoning: <string> # Explain exactly how you deduced each new card
+    memorySummary: <string> # DETAILED summary of your CURRENT understanding.
+    ```
+
+*   **Example LLM YAML Response for Memory Update:**
+
+    ```yaml
+    newlyDeducedCards: [] # As an observer, I didn't see the card Purple Agent showed.
+    reasoning: "Red Agent made a suggestion. Purple Agent challenged it by showing a card to Red Agent. I don't know what card was shown, so I cannot deduce any new cards for certain this turn based on that specific challenge event alone."
+    memorySummary: "My hand contains Mr. Green, Library, Wrench. Red Agent suggested Professor Plum, Lead Pipe, Lounge. Purple Agent holds at least one of these three cards. My suspicion for the combination of Professor Plum, Lead Pipe, Lounge as the solution decreases slightly, as at least one is held by Purple Agent."
+    ```
+
+This structured communication via YAML, combined with detailed prompting, allows the game engine to leverage the reasoning capabilities of different LLMs to play Cluedo. The `LoggingService` records all these interactions, which are then used by the data processing and evaluation scripts.
+
+## Fine-Tuning for Deductive Reasoning
+
+To enhance the deductive capabilities of LLMs within the Cluedo environment, this project supports fine-tuning using Predibase's Group Preference Optimization (GRPO).
+
+**Process Overview:**
+
+1.  **Data Preparation**:
+    *   Game interaction logs, especially `memory_update` events and their corresponding `deduction_comparison` ground truths, are processed by the `scripts/data_processing/prepare_clue_memory_data.py` script.
+    *   This script transforms raw logs into a structured JSONL format, where each line contains a detailed prompt (representing the agent's knowledge and current turn events) and the `ground_truth_deductions` (the cards the agent should logically deduce).
+    *   The prompts are augmented with specific instructions and context relevant to the Cluedo memory update task.
+
+2.  **Predibase GRPO Training**:
+    *   The prepared JSONL dataset is uploaded to Predibase.
+    *   The `scripts/training/predibase_clue_train.py` script is used to configure and launch a GRPO fine-tuning job on Predibase.
+    *   **Reward Function**: A custom Python reward function (`calculate_memory_update_reward` within the script) is central to GRPO. This function:
+        *   Parses the LLM's YAML completion to extract its `newlyDeducedCards`.
+        *   Compares these predicted deductions against the `ground_truth_deductions` from the dataset.
+        *   Calculates a reward based on the F1-score of this comparison, rewarding accurate and complete deductions while penalizing incorrect ones or badly formatted YAML.
+    *   The GRPO process iteratively adjusts the base model (e.g., `qwen2-5-7b-instruct`) based on the rewards received, aiming to produce an adapter that excels at the Cluedo deduction task.
+    *   The resulting fine-tuned adapter can then be deployed on Predibase and evaluated using scripts like `scripts/evaluation/evaluate_cluedo_model.py` or `scripts/evaluation/run_comprehensive_evaluations.py`.
+
+This fine-tuning approach allows for specialized LLM agents that are better adapted to the specific reasoning patterns required in Cluedo. The sponsorship credits from **[Predibase](https://predibase.com/)** were instrumental in enabling this GRPO training.
+
+## Extending with Custom LLMs
+
+You can integrate additional LLM models by updating the `MODEL_LIST` in `cluedo_game_engine/src/services/llm.js` and ensuring the necessary API call logic and environment variables are in place.
+
+## Requirements
+
+- Node.js 14+
+- NPM 6+
+- Python 3.8+ (for running scripts)
+- MongoDB instance (Optional, local or cloud-based like MongoDB Atlas)
+- API Keys (refer to Configuration section):
+    - Cohere API key
+    - OpenRouter API key (Optional, for access to a wider range of models)
+    - Predibase API key (Optional, for using fine-tuned models on Predibase)
+
+
+## Contributing
+
+Contributions welcome! Please feel free to submit a Pull Request.
