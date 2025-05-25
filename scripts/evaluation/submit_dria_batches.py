@@ -10,7 +10,7 @@ DRIA_API_BASE_URL = "https://mainnet.dkn.dria.co/api/v0"
 GET_UPLOAD_URL_ENDPOINT = f"{DRIA_API_BASE_URL}/file/get_upload_url"  # Step 1 endpoint
 COMPLETE_UPLOAD_ENDPOINT = f"{DRIA_API_BASE_URL}/batch/complete_upload" # Step 3 endpoint
 
-DRIA_API_KEY = "dria_91f81e8e17313038e378b27fbe6f6841hayatbizi61kenara61616161BATUHAN"
+DRIA_API_KEY = " "
 DELAY_BETWEEN_FILES = 5  # Seconds to wait between processing each file
 LOOP_DELAY = 10 # Seconds to wait between submission loops
 
