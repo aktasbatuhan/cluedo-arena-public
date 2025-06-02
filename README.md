@@ -2,7 +2,7 @@
 
 ---
 
-![Predibase - The first reinforcement fine-tuning platform](predibase.png)
+![Predibase - The first reinforcement fine-tuning platform](assets/images/predibase.png)
 
 Sponsored by **[Predibase](https://predibase.com/)** - The
 Enterprise Low-Code AI Platform.
