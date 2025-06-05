@@ -68,40 +68,9 @@ Cluedo provides the perfect balance:
 
 ## The Great Model Tournament
 
-Our initial investigation involved evaluating the social reasoning capabilities of leading LLMs across multiple providers:
+Our initial investigation involved a tournament-style evaluation of leading LLMs to benchmark their social reasoning capabilities. We tested a range of models, from frontier models like OpenAI's GPT-4o, Anthropic's Claude 3.5 Sonnet, and Google's Gemini Flash, to open-source champions like Meta's Llama 3.1 and Cohere's Command-R.
 
-### Model Selection Process
-
-**Tier 1: Frontier Models**
-- **Claude Sonnet 3.5**: Known for exceptional reasoning capabilities
-- **GPT-4o**: OpenAI's latest multimodal flagship
-- **Gemini 2.0 Flash**: Google's newest reasoning-focused model
-
-**Tier 2: Open Source Champions**
-- **Command-R**: Cohere's instruction-following specialist
-- **Llama 3.1**: Meta's open-source powerhouse
-- Various other models for baseline comparison
-
-### Multi-Provider Infrastructure
-
-To ensure robust evaluation, we implemented a multi-provider approach:
-
-**Primary: OpenRouter Integration**
-- Unified API access to multiple model providers
-- Consistent evaluation conditions across models
-- Cost-effective scaling for extensive testing
-
-**Secondary: Cohere Backend**
-- Direct integration for Command-R models
-- Enhanced control over generation parameters
-- Specialized fine-tuning capabilities
-
-**Tertiary: Dria Network**
-- Distributed inference for batch processing
-- Advanced model orchestration
-- Scalable evaluation pipelines
-
-The [Dria batch inference system](https://dria.co/batch-inference) proved particularly valuable for running large-scale evaluations efficiently.
+To run this tournament, we used a multi-provider infrastructure. Services like OpenRouter gave us unified access to many models, while direct integrations with platforms like Cohere and Dria gave us the fine-grained control and distributed computing power needed for large-scale, robust evaluations.
 
 ## Building the Arena: Technical Implementation
 
@@ -109,23 +78,9 @@ Our Cluedo Arena represents a sophisticated multi-agent environment designed to 
 
 ### Core Game Engine Features
 
-**Advanced State Management**
-```
-- Complete game state tracking
-- Turn-by-turn history maintenance
-- Dynamic belief state updates
-- Multi-agent memory systems
-```
+The core engine tracks the complete game state, maintains a turn-by-turn history, and allows for dynamic updates to each agent's beliefs. It manages a rich flow of information, including broadcasting suggestions with selective information revealed to certain players, enabling deductive reasoning, and logging strategic decisions for analysis.
 
-**Rich Information Flow**
-```
-- Suggestion broadcasting with selective revelation
-- Knowledge state inference
-- Deductive reasoning chains
-- Strategic decision logging
-```
-
-**Flexible Interaction Modes**
+### Flexible Interaction Modes
 
 1. **Interactive UI Mode**: Real-time gameplay with human-AI collaboration
 2. **Batch Tournament Mode**: Automated multi-game competitions
@@ -133,49 +88,11 @@ Our Cluedo Arena represents a sophisticated multi-agent environment designed to 
 
 ### Memory and Reasoning Systems
 
-Each AI agent maintains sophisticated cognitive structures:
-
-**Episodic Memory**
-- Complete game history with temporal ordering
-- Event significance weighting
-- Cross-reference capability for pattern detection
-
-**Semantic Knowledge**
-- Rule understanding and application
-- Strategic principle recognition
-- Opponent modeling capabilities
-
-**Working Memory**
-- Current game state awareness
-- Active hypothesis management
-- Real-time belief updates
+Each AI agent was equipped with a sophisticated memory system, including an **episodic memory** for the game's history, **semantic knowledge** of the rules and strategies, and a **working memory** for real-time belief updates and hypothesis management.
 
 ## Dataset Creation: Crafting the Perfect Game Scenarios
 
-Creating an effective training dataset required careful consideration of scenario diversity and complexity:
-
-### YAML-Based Game Representation
-
-We developed a structured YAML format that captures:
-
-```yaml
-game_scenarios:
-  - id: "scenario_001"
-    setup:
-      characters: [Miss_Scarlett, Colonel_Mustard, Mrs_White]
-      weapons: [Candlestick, Lead_Pipe, Revolver]
-      rooms: [Library, Study, Kitchen]
-    solution:
-      character: Miss_Scarlett
-      weapon: Candlestick
-      room: Library
-    interactions:
-      - turn: 1
-        player: Colonel_Mustard
-        action: suggest
-        suggestion: [Mrs_White, Lead_Pipe, Kitchen]
-        responses: [show_card, no_card, no_card]
-```
+Creating an effective training dataset required careful consideration of scenario diversity and complexity. We developed a structured format to define game setups, solutions, and a sequence of interactions. This allowed us to systematically generate games with varying levels of difficulty, from simple scenarios for basic reasoning to complex games requiring advanced social deduction.
 
 ### Scenario Diversity Principles
 
@@ -202,11 +119,7 @@ Our fine-tuning approach leveraged cutting-edge reinforcement learning technique
 
 ### GRPO: Group Relative Policy Optimization
 
-We employed **Group Relative Policy Optimization (GRPO)**, an advanced variant of PPO specifically designed for multi-agent scenarios. GRPO excels in social contexts by:
-
-- **Relative reward calculation** that considers performance against peer agents
-- **Social equilibrium convergence** that promotes cooperative strategies
-- **Robust learning** in complex multi-agent environments
+We employed **Group Relative Policy Optimization (GRPO)**, an advanced variant of PPO specifically designed for multi-agent scenarios. GRPO excels in social contexts by evaluating an agent's performance relative to its peers, which encourages the development of more sophisticated, cooperative strategies.
 
 ### Platform: Predibase
 
@@ -226,43 +139,7 @@ We selected **Qwen-2.5-7B** as our base model due to:
 
 ### Training Methodology
 
-**Three Systematic Training Runs**
-
-**Run 1: Conservative Baseline**
-```
-Learning Rate: 1e-6
-Batch Size: 32
-Epochs: 3
-Focus: Basic game rule understanding
-```
-
-**Run 2: Balanced Approach**
-```
-Learning Rate: 5e-6
-Batch Size: 64
-Epochs: 5
-Focus: Strategic reasoning development
-```
-
-**Run 3: Aggressive Optimization**
-```
-Learning Rate: 1e-5
-Batch Size: 128
-Epochs: 8
-Focus: Advanced social reasoning
-```
-
-### Training Infrastructure
-
-**Primary: tiny-grpo Library**
-- Lightweight implementation of GRPO algorithm
-- Optimized for multi-agent reinforcement learning
-- Integration with popular ML frameworks
-
-**Secondary: OpenPipe ART**
-- Advanced Reinforcement Training toolkit
-- Specialized for language model fine-tuning
-- Comprehensive evaluation metrics
+We conducted several systematic training runs, starting with a conservative baseline to ensure basic rule understanding and progressively moving to more aggressive optimization to foster advanced social reasoning. We experimented with different configurations to find the optimal balance for developing strategic capabilities.
 
 ## Results That Surprised Everyone
 
@@ -310,9 +187,6 @@ Measured through our custom strategic reasoning metrics, the model showed a 60% 
 ![Performance Comparison](assets/images/final_results.png)
 *Comparative performance analysis across all evaluated models*
 
-![Predibase Platform](assets/images/predibase.png)
-*Predibase infrastructure used for fine-tuning experiments*
-
 ## Technical Deep Dive: What Made It Work
 
 ### The Power of Multi-Agent Reinforcement Learning
@@ -332,18 +206,9 @@ Traditional supervised fine-tuning approaches fall short in social reasoning tas
 
 ### Advanced Prompting Strategies
 
-Our success also relied on sophisticated prompting techniques:
+Our success also relied on sophisticated prompting techniques. We used structured reasoning templates in our prompts to guide the model's thought process. This template encouraged the model to articulate its `OBSERVATION` of the game state, formulate a `DEDUCTION`, update its `BELIEFS`, devise a `STRATEGY`, and state its `CONFIDENCE` level. This chain-of-thought approach produced more coherent and transparent reasoning.
 
-**Structured Reasoning Templates**
-```
-OBSERVATION: [Current game state]
-DEDUCTION: [What can be inferred]
-BELIEF_UPDATE: [How beliefs change]
-STRATEGY: [Next optimal action]
-CONFIDENCE: [Certainty level]
-```
-
-**Multi-Perspective Analysis**
+### Multi-Perspective Analysis
 - Self-perspective: What do I know?
 - Opponent modeling: What do others know?
 - Global analysis: What does everyone know?
@@ -424,10 +289,7 @@ Skills developed in the Cluedo environment showed promising transfer to other so
 
 ### Open Research Questions
 
-1. **Scalability**: How do these approaches scale to larger agent populations?
-2. **Generalization**: Can social reasoning skills transfer across different domains?
-3. **Human-AI Collaboration**: How can we optimize human-AI social interaction?
-4. **Ethical Considerations**: What are the implications of enhanced AI social reasoning?
+This research opens up several exciting questions for the future: How do these social reasoning skills scale with more players or more complex games? Can these skills generalize to other social domains beyond games? How can we best design collaborative systems where humans and AI reason together? And what are the ethical implications of creating more socially savvy AI?
 
 ## Demonstration
 

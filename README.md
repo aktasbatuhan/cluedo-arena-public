@@ -131,15 +131,15 @@ For very large-scale evaluations, this project supports preparing batch input fi
 
 2.  **Install Dependencies:**
     *   **Node.js Backend:**
-        ```bash
+    ```bash
         cd cluedo_game_engine
-        npm install
+    npm install
         cd ..
         ```
     *   **Python Scripts:**
         ```bash
         pip install -r requirements.txt
-        ```
+    ```
 
 3.  **Configure Environment Variables:**
     Navigate to the `cluedo_game_engine` directory and rename `.env.example` to `.env`. Fill in the necessary API keys and other configurations.
@@ -321,7 +321,7 @@ You can integrate additional LLM models by updating the `MODEL_LIST` in `cluedo_
 - Python 3.8+ (for running scripts)
 - MongoDB instance (Optional, local or cloud-based like MongoDB Atlas)
 - API Keys (refer to Configuration section):
-    - Cohere API key
+- Cohere API key
     - OpenRouter API key (Optional, for access to a wider range of models)
     - Predibase API key (Optional, for using fine-tuned models on Predibase)
 
