@@ -11,7 +11,7 @@
 5. [Building the Arena: Technical Implementation](#building-the-arena-technical-implementation)
 6. [Dataset Creation: Crafting the Perfect Game Scenarios](#dataset-creation-crafting-the-perfect-game-scenarios)
 7. [The Fine-Tuning Journey](#the-fine-tuning-journey)
-8. [Results That Surprised Everyone](#results-that-surprised-everyone)
+8. [Results](#results-that-surprised-everyone)
 9. [Technical Deep Dive: What Made It Work](#technical-deep-dive-what-made-it-work)
 10. [Challenges and Learnings](#challenges-and-learnings)
 11. [Future Directions](#future-directions)
@@ -33,38 +33,20 @@ Recent research has highlighted significant gaps in LLM social reasoning capabil
 
 ### The Challenge of Evaluation
 
-Traditional ToM evaluation methods often rely on:
-- Static question-answering formats
-- Simplified scenarios that don't capture real-world complexity
-- Limited interaction between agents
-- Lack of dynamic belief updates
-
-These limitations motivated our search for a more engaging and realistic evaluation framework—one that would challenge models to maintain complex mental models over extended interactions.
+Traditional ToM evaluation methods often fall back on static question-answering formats and oversimplified scenarios that fail to capture the complexity of real-world social dynamics. These methods are further limited by a lack of genuine interaction between agents and an inability to model the dynamic way that beliefs are updated over time. These limitations motivated our search for a more engaging and realistic evaluation framework—one that would challenge models to maintain complex mental models over extended interactions.
 
 ## Why Cluedo? The Perfect Testing Ground
 
-After extensive research into potential evaluation environments, **Cluedo** (known as Clue in North America) emerged as the ideal testbed for social reasoning evaluation. Here's why:
+After extensive research into potential evaluation environments, **Cluedo** (known as Clue in North America) emerged as the ideal testbed for social reasoning evaluation.
 
 ### Multi-Agent Complexity
-Unlike single-agent puzzles, Cluedo requires players to:
-- Track multiple agents' knowledge states simultaneously
-- Infer hidden information from partial observations
-- Reason about what others know and don't know
-- Adapt strategies based on opponent behavior
+Unlike single-agent puzzles, Cluedo introduces a layer of multi-agent complexity that requires players to track the knowledge states of multiple opponents simultaneously. Success in the game demands the ability to infer hidden information from partial observations, reason about what others know and do not know, and adapt strategies based on their behavior.
 
 ### Dynamic Information Flow
-The game creates a rich information ecosystem where:
-- Each suggestion reveals information to all players
-- Players must deduce not only the solution but also what others have learned
-- Information asymmetry drives strategic decision-making
-- False suggestions can be used for deception
+The game creates a dynamic flow of information where every suggestion made reveals something to all players at the table. This means players must deduce not only the solution to the mystery but also what their opponents have learned from the same clues. This information asymmetry is what drives strategic decision-making and even opens the door for deception through false suggestions.
 
 ### Structured Yet Open-Ended
-Cluedo provides the perfect balance:
-- **Clear rules** that enable systematic evaluation
-- **Strategic depth** that prevents simple memorization
-- **Multiple valid approaches** to solution discovery
-- **Rich interaction patterns** that mirror real-world social dynamics
+Cluedo provides a perfect balance of structure and open-endedness. Its clear rules enable systematic evaluation, while its strategic depth prevents players from succeeding through simple memorization. The game allows for multiple valid approaches to discovering the solution, resulting in rich interaction patterns that mirror real-world social dynamics.
 
 ## The Great Model Tournament
 
@@ -82,9 +64,7 @@ The core engine tracks the complete game state, maintains a turn-by-turn history
 
 ### Flexible Interaction Modes
 
-1. **Interactive UI Mode**: Real-time gameplay with human-AI collaboration
-2. **Batch Tournament Mode**: Automated multi-game competitions
-3. **Evaluation Mode**: Systematic assessment with ground truth tracking
+Our Cluedo Arena was designed with flexibility in mind, supporting several modes of interaction. It includes an interactive UI for real-time gameplay and human-AI collaboration, a batch tournament mode for running automated multi-game competitions, and a dedicated evaluation mode for systematic assessment with ground-truth tracking.
 
 ### Memory and Reasoning Systems
 
@@ -96,22 +76,7 @@ Creating an effective training dataset required careful consideration of scenari
 
 ### Scenario Diversity Principles
 
-**Complexity Gradation**
-- Simple 2-3 turn games for basic reasoning
-- Medium 5-7 turn games for strategic thinking
-- Complex 10+ turn games for advanced social reasoning
-
-**Information Patterns**
-- Direct revelation scenarios
-- Deductive inference requirements
-- Misdirection and false lead situations
-- Collaborative discovery patterns
-
-**Strategic Variations**
-- Conservative play styles
-- Aggressive information gathering
-- Deceptive suggestion strategies
-- Collaborative vs. competitive approaches
+We built our dataset around core principles of diversity to ensure our model could handle a wide range of social situations. This included a gradation of complexity, from simple games for basic reasoning to complex scenarios requiring advanced social deduction. We also created a variety of information patterns, including situations requiring direct deduction, inference, and even navigating misdirection. Finally, we incorporated different strategic variations, modeling conservative and aggressive playstyles as well as deceptive or collaborative approaches.
 
 ## The Fine-Tuning Journey
 
@@ -123,25 +88,17 @@ We employed **Group Relative Policy Optimization (GRPO)**, an advanced variant o
 
 ### Platform: Predibase
 
-[Predibase](https://predibase.com/) provided the infrastructure for our fine-tuning experiments with:
-- **Scalable GPU clusters** for efficient training
-- **Experiment tracking** for comprehensive analysis
-- **Model versioning** for systematic comparison
-- **Production deployment** capabilities
+[Predibase](https://predibase.com/) provided the core infrastructure for our fine-tuning experiments, offering scalable GPU clusters for efficient training, comprehensive experiment tracking tools, model versioning for systematic comparison, and one-click production deployment capabilities.
 
 ### Base Model: Qwen-2.5-7B
 
-We selected **Qwen-2.5-7B** as our base model due to:
-- Strong reasoning capabilities in the 7B parameter range
-- Excellent instruction-following performance
-- Open-source availability for research purposes
-- Efficient inference characteristics
+We selected **Qwen-2.5-7B** as our base model for its strong reasoning capabilities in the 7B parameter range, its excellent instruction-following performance, its open-source availability for research, and its efficient inference characteristics.
 
 ### Training Methodology
 
 We conducted several systematic training runs, starting with a conservative baseline to ensure basic rule understanding and progressively moving to more aggressive optimization to foster advanced social reasoning. We experimented with different configurations to find the optimal balance for developing strategic capabilities.
 
-## Results That Surprised Everyone
+## Results
 
 The outcomes of our fine-tuning experiments exceeded all expectations:
 
@@ -151,27 +108,14 @@ The outcomes of our fine-tuning experiments exceeded all expectations:
 Our fine-tuned model achieved 75% accuracy in correctly identifying the solution across diverse game scenarios—a remarkable improvement over baseline performance.
 
 **Competitive Performance: 8/9 Models Outperformed**
-When compared against the original model lineup, our fine-tuned Qwen-2.5-7B outperformed 8 out of 9 models, including several larger and more recent architectures.
+Our fine-tuned Qwen-2.5-7B outperformed 8 out of 9 competing models, including several larger and more recent architectures. It also proved to be the most parameter-efficient, achieving the highest performance score relative to its size.
 
 **Strategic Reasoning Improvement: 60% Enhancement**
 Measured through our custom strategic reasoning metrics, the model showed a 60% improvement in making optimal strategic decisions.
 
 ### Qualitative Breakthroughs
 
-**Enhanced Social Awareness**
-- Improved ability to track multiple agent beliefs simultaneously
-- Better understanding of information asymmetry
-- More sophisticated opponent modeling
-
-**Strategic Sophistication**
-- Development of multi-turn planning capabilities
-- Adaptive strategy based on opponent behavior
-- Effective use of deception and misdirection
-
-**Reasoning Chain Quality**
-- More coherent explanation of deductive steps
-- Better integration of multiple information sources
-- Improved confidence calibration
+Beyond the numbers, we saw significant qualitative breakthroughs. The fine-tuned model demonstrated enhanced social awareness, with an improved ability to track multiple agents' beliefs, understand information asymmetry, and develop more sophisticated models of its opponents. Its strategic sophistication grew, leading to multi-turn planning, adaptive strategies based on opponent behavior, and even the effective use of deception. The quality of its reasoning chains also improved, with more coherent explanations for its deductions, better integration of multiple information sources, and more accurate confidence calibration.
 
 ### Visual Results
 
@@ -191,101 +135,41 @@ Measured through our custom strategic reasoning metrics, the model showed a 60% 
 
 ### The Power of Multi-Agent Reinforcement Learning
 
-Traditional supervised fine-tuning approaches fall short in social reasoning tasks because they cannot capture the dynamic, interactive nature of social cognition. Our GRPO-based approach succeeded because:
+Traditional supervised fine-tuning is not well-suited for social reasoning tasks, as it fails to capture the dynamic, interactive nature of social cognition. Our GRPO-based approach succeeded because it allowed models to learn through actual gameplay rather than from static examples, leading to the natural emergence of social strategies.
 
-**Interactive Learning Environment**
-- Models learned through actual gameplay rather than static examples
-- Real-time feedback from multi-agent interactions
-- Natural emergence of social strategies
+### Reward Structure Design
 
-**Reward Structure Design**
-- Primary rewards for correct deductions
-- Secondary rewards for strategic decision-making
-- Social rewards for effective information gathering
-- Penalty structures for suboptimal moves
+The model's learning was guided by a carefully designed reward structure. We gave the model primary rewards for making correct deductions about the game's solution and secondary rewards for making strategically sound decisions that would lead to a win.
 
 ### Advanced Prompting Strategies
 
 Our success also relied on sophisticated prompting techniques. We used structured reasoning templates in our prompts to guide the model's thought process. This template encouraged the model to articulate its `OBSERVATION` of the game state, formulate a `DEDUCTION`, update its `BELIEFS`, devise a `STRATEGY`, and state its `CONFIDENCE` level. This chain-of-thought approach produced more coherent and transparent reasoning.
 
-### Multi-Perspective Analysis
-- Self-perspective: What do I know?
-- Opponent modeling: What do others know?
-- Global analysis: What does everyone know?
+The model was also prompted to analyze the game from multiple perspectives, constantly asking not only "What do I know?" but also "What do my opponents know?" and "What is the global state of knowledge?"
 
 ### Memory Architecture Innovations
 
-**Hierarchical Information Storage**
-- Immediate: Current turn information
-- Short-term: Recent game developments
-- Long-term: Strategic patterns and principles
-
-**Dynamic Attention Mechanisms**
-- Weighted importance of different information types
-- Context-dependent relevance scoring
-- Adaptive forgetting of outdated information
+We implemented a hierarchical information storage system to manage the flow of information throughout the game. This system separated memory into immediate (the current turn's information), short-term (recent developments in the game), and long-term (strategic patterns and principles learned over time).
 
 ## Challenges and Learnings
 
 ### Technical Challenges
 
-**Computational Complexity**
-Multi-agent reinforcement learning with language models presents significant computational demands. We addressed this through:
-- Efficient batching strategies
-- Gradient accumulation techniques
-- Strategic checkpoint management
-
-**Convergence Stability**
-GRPO training can be unstable in complex environments. Solutions included:
-- Careful learning rate scheduling
-- Progressive curriculum development
-- Regularization techniques
-
-**Evaluation Methodology**
-Assessing social reasoning capabilities requires nuanced evaluation metrics beyond simple accuracy. We developed:
-- Multi-dimensional scoring systems
-- Qualitative analysis frameworks
-- Human evaluation protocols
+Multi-agent reinforcement learning with language models presents significant computational demands, which we addressed with efficient batching, gradient accumulation, and strategic checkpointing. GRPO training can also be unstable, so we achieved convergence through careful learning rate scheduling, a progressive curriculum that started with simpler scenarios, and regularization. Finally, assessing social reasoning required us to develop a nuanced evaluation methodology that went beyond simple accuracy to include multi-dimensional scoring and qualitative analysis.
 
 ### Research Insights
 
-**Quality Over Quantity**
-Our results demonstrate that carefully curated, high-quality training scenarios are more valuable than large volumes of generic data.
-
-**Emergent Social Strategies**
-The models developed sophisticated social strategies that were not explicitly programmed, including:
-- Selective information sharing
-- Strategic misdirection
-- Collaborative problem-solving
-
-**Transfer Learning Potential**
-Skills developed in the Cluedo environment showed promising transfer to other social reasoning tasks, suggesting broad applicability.
+Our results show that a smaller set of high-quality, curated training scenarios is more valuable than a large volume of generic data. We also observed the emergence of sophisticated social strategies that were not explicitly programmed, such as selective information sharing and strategic misdirection. The skills developed in the Cluedo environment also showed promising transfer to other social reasoning tasks, suggesting the broad applicability of this approach.
 
 ## Future Directions
 
 ### Immediate Extensions
 
-**Expanded Game Variants**
-- Different board sizes and complexity levels
-- Modified rules for increased strategic depth
-- Multi-round tournaments with memory persistence
-
-**Enhanced Model Architectures**
-- Integration with larger foundation models
-- Multimodal capabilities for visual game boards
-- Specialized architectures for social reasoning
+We plan to expand the project with more complex game variants, including different board sizes and modified rules, and to create multi-round tournaments where memory persists between games. We also aim to integrate our fine-tuned models with larger foundation models and explore multimodal capabilities that would allow the AI to process a visual game board.
 
 ### Long-Term Research Agenda
 
-**Real-World Applications**
-- Negotiation and conflict resolution systems
-- Collaborative AI assistants
-- Educational applications for social skills development
-
-**Theoretical Contributions**
-- Formal models of AI social reasoning
-- Benchmark development for ToM evaluation
-- Cross-cultural social reasoning studies
+Looking ahead, we aim to apply these socially intelligent agents to real-world applications, such as negotiation and conflict resolution systems, collaborative AI assistants, and educational tools for social skills development. We also intend to contribute to the theoretical understanding of AI social reasoning by developing more formal models and benchmarks for ToM evaluation.
 
 ### Open Research Questions
 
@@ -299,11 +183,7 @@ Experience the system in action through our comprehensive demonstration:
 [![Cluedo Arena Demo](assets/images/predibase.png)](assets/videos/models_playing_game.mov)
 *Click to watch: Complete gameplay demonstration showing AI agents reasoning through a complex Cluedo scenario*
 
-The demonstration showcases:
-- Real-time decision-making processes
-- Multi-agent interaction patterns
-- Strategic reasoning development
-- Solution discovery through social deduction
+The demonstration showcases the model's real-time decision-making process, the emergent multi-agent interaction patterns, its development of strategic reasoning, and its path to discovering the solution through social deduction.
 
 ## Conclusion
 
@@ -311,18 +191,11 @@ This project represents a significant step forward in developing AI systems capa
 
 ### Key Contributions
 
-1. **Novel Evaluation Framework**: Cluedo as a rich testbed for social reasoning
-2. **Technical Innovation**: GRPO-based fine-tuning for multi-agent scenarios
-3. **Empirical Results**: 75% accuracy with competitive performance across model comparisons
-4. **Methodological Insights**: Quality over quantity in training data curation
+Our key contributions are a novel evaluation framework using Cluedo as a rich testbed for social reasoning; a technical innovation in applying GRPO-based fine-tuning to multi-agent scenarios; empirical results showing 75% accuracy and competitive performance across a range of models; and methodological insights into the value of high-quality training data.
 
 ### Broader Implications
 
-The success of this approach suggests promising directions for AI development:
-- **Enhanced Human-AI Collaboration** through better social understanding
-- **More Natural AI Assistants** capable of nuanced social interaction
-- **Educational Applications** for developing human social reasoning skills
-- **Research Tools** for studying social cognition and Theory of Mind
+The success of this approach suggests promising directions for AI, including enhanced human-AI collaboration, more natural AI assistants, new educational applications for developing social skills, and better research tools for studying social cognition itself.
 
 ### The Journey Continues
 
