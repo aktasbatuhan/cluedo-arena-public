@@ -329,3 +329,17 @@ You can integrate additional LLM models by updating the `MODEL_LIST` in `cluedo_
 ## Contributing
 
 Contributions welcome! Please feel free to submit a Pull Request.
+## Running Tests
+
+### Node.js Tests
+Run the built-in Node test runner for JavaScript components:
+```bash
+cd cluedo_game_engine
+npm test
+```
+
+### Python Tests
+Run pytest for the Python utilities and scripts:
+```bash
+pytest
+```

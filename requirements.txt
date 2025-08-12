@@ -2,4 +2,5 @@
 flask
 openai
 uvicorn
-# Add other dependencies if needed 
+pytest
+# Add other dependencies if needed
