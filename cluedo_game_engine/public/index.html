@@ -9,6 +9,7 @@
     <h1>AI Cluedo</h1>
     <div class="mode-options">
       <button onclick="startGame('spectate')">Start Game</button>
+      <button onclick="startGame('multi')">Run Multiple Games</button>
     </div>
   </div>
 
@@ -63,6 +64,22 @@
           </div>
           <div id="players-list"></div>
         </div>
+      </div>
+
+      <div class="leaderboard-panel">
+        <h2>Leaderboard</h2>
+        <table id="leaderboard">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Games</th>
+              <th>Wins</th>
+              <th>Win %</th>
+              <th>Avg Turns</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -428,6 +445,24 @@
       background: rgba(74, 158, 255, 0.1);
       padding: 2px 6px;
       border-radius: 4px;
+    }
+
+    .leaderboard-panel {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+
+    #leaderboard {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    #leaderboard th,
+    #leaderboard td {
+      padding: 4px 8px;
+      text-align: left;
     }
 
     /* Current turn styles */

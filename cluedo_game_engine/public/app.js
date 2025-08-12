@@ -62,6 +62,24 @@ socket.on('game-event', (event) => {
   }
 });
 
+socket.on('leaderboard-update', (stats) => {
+  const tbody = document.querySelector('#leaderboard tbody');
+  if (!tbody) return;
+  const rows = Object.values(stats)
+    .sort((a, b) => b.win_rate - a.win_rate)
+    .map(entry => `
+      <tr>
+        <td>${entry.model_name}</td>
+        <td>${entry.games_played}</td>
+        <td>${entry.games_won}</td>
+        <td>${entry.win_rate}</td>
+        <td>${entry.avg_completion_time}</td>
+      </tr>
+    `)
+    .join('');
+  tbody.innerHTML = rows;
+});
+
 let isHumanPlayer = false;
 let playerIndex = -1;
 

@@ -5,6 +5,34 @@ import { Game } from './models/Game.js';
 import { runGame } from './gameLogic.js';
 import { GameResult } from './models/GameResult.js';
 import { parseArgs } from 'node:util';
+import { spawnSync } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// In-memory store of completed games
+const gameResults = [];
+
+function computeLeaderboard(results) {
+  const scriptPath = path.resolve(__dirname, '../../scripts/utility').replace(/\\/g, '/');
+  const pyCode = `import json,sys,os\nsys.path.append('${scriptPath}')\nfrom leaderboard import analyze_games\ndata=json.loads(sys.stdin.read())\nprint(json.dumps(analyze_games(data)))`;
+  const out = spawnSync('python', ['-c', pyCode], {
+    input: JSON.stringify(results),
+    encoding: 'utf-8'
+  });
+  if (out.status !== 0) {
+    console.error('Leaderboard generation failed:', out.stderr);
+    return {};
+  }
+  try {
+    return JSON.parse(out.stdout);
+  } catch (err) {
+    console.error('Failed to parse leaderboard output:', err);
+    return {};
+  }
+}
 
 let game = null;
 
@@ -48,12 +76,42 @@ export async function startServer() {
   const app = express();
   const server = createServer(app);
   const io = new Server(server);
-  
+
   app.use(express.static('public'));
+
+  function handleGameResult(result) {
+    gameResults.push(result);
+    io.emit('game-complete', {
+      winner: result.winner,
+      totalTurns: result.totalTurns,
+      players: result.players
+    });
+    const leaderboard = computeLeaderboard(gameResults);
+    io.emit('leaderboard-update', leaderboard);
+  }
   
   io.on('connection', (socket) => {
     socket.on('game-mode', async (mode) => {
       try {
+        if (mode === 'multi') {
+          const numGames = 5;
+          for (let i = 0; i < numGames; i++) {
+            const multiGame = new Game('spectate', io);
+            await multiGame.initialize();
+            const result = await runGameLoop(multiGame);
+            handleGameResult(result);
+
+            if (multiGame.agents) {
+              for (const agent of multiGame.agents) {
+                await agent.memory.reset();
+              }
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          return;
+        }
+
         // Always create a new game when mode is selected
         game = new Game(mode, io);
         await game.initialize();
@@ -139,7 +197,8 @@ export async function startServer() {
         
         if (mode === 'spectate') {
           console.log('Starting AI-only game...');
-          runGameLoop(game);
+          const result = await runGameLoop(game);
+          handleGameResult(result);
         }
       } catch (error) {
         console.error('Failed to start game:', error);
@@ -354,7 +413,8 @@ async function runGameLoop(game) {
             console.error('[runGameLoop] Error occurred during GameResult.saveResults (no winner):', saveError);
         }
     }
-    
+
+    return resultData;
   } catch (error) {
     console.error('Game loop error:', error);
     console.error('Game state:', {
@@ -365,4 +425,4 @@ async function runGameLoop(game) {
     });
     console.error(error.stack);
   }
-} 
+}
