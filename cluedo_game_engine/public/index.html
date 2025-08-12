@@ -5,10 +5,19 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div id="loading-overlay">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <div id="progress-status">Preparing games...</div>
+      <div id="progress-bar"><div class="progress"></div></div>
+    </div>
+  </div>
   <div id="mode-selection" class="center-screen">
     <h1>AI Cluedo</h1>
     <div class="mode-options">
-      <button onclick="startGame('spectate')">Start Game</button>
+      <button class="mode-button" onclick="startGame('single')">Single Game</button>
+      <button class="mode-button" onclick="startGame('multi')">Multiple Game</button>
+      <input id="multi-count" type="number" min="1" value="5" style="width: 60px; margin-left: 8px;" />
     </div>
   </div>
 
@@ -49,6 +58,11 @@
           <h2>Investigation Log</h2>
           <div id="log-messages"></div>
         </div>
+
+        <div class="memory-panel">
+          <h2>Agent Memory</h2>
+          <div id="memory-panel"></div>
+        </div>
       </div>
 
       <div class="players-panel">
@@ -62,6 +76,27 @@
             </div>
           </div>
           <div id="players-list"></div>
+        </div>
+
+        <div class="leaderboard-panel multi-game-only hidden">
+          <h2>Leaderboard</h2>
+          <table id="leaderboard">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Games</th>
+                <th>Wins</th>
+                <th>Win %</th>
+                <th>Avg Turns</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div id="past-games" class="multi-game-only hidden">
+          <h2>Past Games</h2>
+          <div id="past-games-list"></div>
         </div>
       </div>
     </div>
