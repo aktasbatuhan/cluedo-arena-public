@@ -1,5 +1,6 @@
 import os
 import ast
+import sys
 import yaml  # Requires PyYAML (pip install PyYAML)
 from pathlib import Path
 from predibase import Predibase, GRPOConfig, RewardFunctionsConfig
@@ -117,7 +118,7 @@ try:
 except Exception as e:
     print(f"Error initializing Predibase client: {e}")
     print("Ensure PREDIBASE_API_KEY environment variable is set correctly.")
-    exit(1)
+    sys.exit(1)
 
 # --- Get the dataset from Predibase by Name ---
 print(f"Attempting to retrieve dataset '{PREDIBASE_DATASET_NAME}' from Predibase...")
@@ -128,7 +129,7 @@ try:
 except Exception as e:
     print(f"Error retrieving dataset '{PREDIBASE_DATASET_NAME}': {e}")
     print("Please ensure the dataset name is correct and it exists in your Predibase account.")
-    exit(1)
+    sys.exit(1)
 
 # --- Configure Reward Functions ---
 # We only need the memory update reward since we assume the dataset is filtered

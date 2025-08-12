@@ -1,5 +1,6 @@
 import os
 import argparse
+import sys
 from predibase import Predibase
 
 # --- Configuration ---
@@ -14,7 +15,8 @@ try:
 except Exception as e:
     print(f"Error initializing Predibase client: {e}")
     print("Ensure PREDIBASE_API_KEY environment variable is set correctly.")
-    exit(1)
+    sys.exit(1)
+
 
 def prompt_model(deployment_name: str, adapter_id_str: str, prompt_text: str, max_new_tokens: int = 256):
     """
@@ -41,7 +43,7 @@ def prompt_model(deployment_name: str, adapter_id_str: str, prompt_text: str, ma
             adapter_id=adapter_id_str,
             max_new_tokens=max_new_tokens
         )
-        
+
         print("\n--- Model Response ---")
         print(response.generated_text)
         print("----------------------")
@@ -54,16 +56,17 @@ def prompt_model(deployment_name: str, adapter_id_str: str, prompt_text: str, ma
         print(f"2. The adapter '{adapter_id_str}' exists and is compatible.")
         print("3. Your API key has the necessary permissions.")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prompt a Predibase model with a specific adapter.")
-    parser.add_argument("--deployment", default="qwen2-5-7b-instruct", 
+    parser.add_argument("--deployment", default="qwen2-5-7b-instruct",
                         help="Name of the base model deployment in Predibase (default: qwen2-5-7b-instruct).")
-    parser.add_argument("--adapter", required=True, 
+    parser.add_argument("--adapter", required=True,
                         help="Full adapter ID (e.g., 'your_repo/adapter_name/version' or 'adapter_name/version').")
     parser.add_argument("--prompt", required=True, help="The prompt text to send to the model.")
-    parser.add_argument("--max-tokens", type=int, default=256, 
+    parser.add_argument("--max-tokens", type=int, default=256,
                         help="Maximum new tokens to generate (default: 256).")
-    
+
     args = parser.parse_args()
 
     # Construct the full adapter ID if it doesn't contain a slash (assuming it's in the default repo)
@@ -73,4 +76,5 @@ if __name__ == "__main__":
     # Example: if user provides 'my_adapter/1' and your repo is 'my_org', it should be 'my_org/my_adapter/1'
     # The pb.deployments.client(deployment_name).generate(..., adapter_id=...) expects the full path.
 
-    prompt_model(args.deployment, adapter_id, args.prompt, max_new_tokens=args.max_tokens) 
+    prompt_model(args.deployment, adapter_id, args.prompt, max_new_tokens=args.max_tokens)
+

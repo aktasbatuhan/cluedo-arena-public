@@ -1,8 +1,8 @@
-print("=== DEBUG: Running evaluate_cluedo_model.py version with detailed JSONDecodeError reporting (v_debug_json_err_reporting) ===")
 import os
 import json
 import argparse
 import random
+import sys
 from predibase import Predibase
 import ast # For literal_eval
 import yaml # For parsing model output
@@ -19,7 +19,7 @@ try:
     print("Predibase client initialized successfully.")
 except Exception as e:
     print(f"Error initializing Predibase client: {e}")
-    exit(1)
+    sys.exit(1)
 
 # --- Reward Function Logic (adapted from predibase_clue_train.py for evaluation) ---
 def extract_yaml_from_completion(completion: str):
@@ -525,6 +525,7 @@ def main(args):
         print("No results to summarize.")
 
 if __name__ == "__main__":
+    print("=== DEBUG: Running evaluate_cluedo_model.py version with detailed JSONDecodeError reporting (v_debug_json_err_reporting) ===")
     parser = argparse.ArgumentParser(description="Evaluate a fine-tuned Cluedo model on a test set.")
     parser.add_argument("--llm_interactions_path", help="Path to the full llm_interactions.json file. Required if --input_eval_csv is not used.")
     
