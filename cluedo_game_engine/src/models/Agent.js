@@ -257,12 +257,13 @@ export class Agent {
 
   /**
    * Gets a formatted representation of this agent's memory state.
-   * 
-   * @returns {Object} The agent's current memory and model
+   *
+   * @returns {Promise<Object>} The agent's current memory and model
    */
-  getMemoryState() {
+  async getMemoryState() {
+    const memoryState = await this.memory.formatMemoryForLLM();
     return {
-      ...this.memory.formatMemoryForLLM(),
+      ...memoryState,
       model: this.model
     };
   }
