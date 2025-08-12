@@ -10,6 +10,7 @@
     <div class="mode-options">
       <button class="mode-button" onclick="startGame('single')">Single Game</button>
       <button class="mode-button" onclick="startGame('multi')">Multiple Game</button>
+      <input id="multi-count" type="number" min="1" value="5" style="width: 60px; margin-left: 8px;" />
     </div>
   </div>
 
@@ -103,8 +104,15 @@
     function startGame(mode) {
       document.getElementById('mode-selection').classList.add('hidden');
       document.getElementById('game-container').classList.remove('hidden');
-      
-      socket.emit('game-mode', mode);
+      const data = { mode };
+      if (mode === 'multi') {
+        const input = document.getElementById('multi-count');
+        const count = parseInt(input?.value, 10);
+        if (!isNaN(count)) {
+          data.count = count;
+        }
+      }
+      socket.emit('game-mode', data);
     }
 
     socket.on('game-event', (event) => {

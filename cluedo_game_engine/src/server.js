@@ -71,10 +71,14 @@ export async function startServer() {
       socket.emit('leaderboard-update', computeLeaderboard(completedGames));
     }
 
-    socket.on('game-mode', async (mode) => {
+    socket.on('game-mode', async (data) => {
       try {
+        const { mode, count } = typeof data === 'object' ? data : { mode: data };
         if (mode === 'multi') {
-          const numGames = 5; // Or make this configurable
+          let numGames = parseInt(count, 10);
+          if (isNaN(numGames) || numGames <= 0) {
+            numGames = 5; // Default if invalid
+          }
           for (let i = 0; i < numGames; i++) {
             const multiGame = new Game('spectate', io); // UI will spectate
             await multiGame.initialize();
