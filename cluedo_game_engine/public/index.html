@@ -5,6 +5,13 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div id="loading-overlay">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <div id="progress-status">Preparing games...</div>
+      <div id="progress-bar"><div class="progress"></div></div>
+    </div>
+  </div>
   <div id="mode-selection" class="center-screen">
     <h1>AI Cluedo</h1>
     <div class="mode-options">
@@ -103,7 +110,14 @@
     function startGame(mode) {
       document.getElementById('mode-selection').classList.add('hidden');
       document.getElementById('game-container').classList.remove('hidden');
-      
+
+      if (mode === 'multi') {
+        const overlay = document.getElementById('loading-overlay');
+        overlay.classList.add('active');
+        document.querySelector('#progress-bar .progress').style.width = '0%';
+        document.getElementById('progress-status').textContent = 'Starting games...';
+      }
+
       socket.emit('game-mode', mode);
     }
 
@@ -197,6 +211,17 @@
     socket.on('game-solution', (solution) => {
       const solutionDisplay = document.getElementById('solution-display');
       solutionDisplay.textContent = `${solution.suspect} in the ${solution.room} with the ${solution.weapon}`;
+    });
+
+    socket.on('game-progress', ({ total, completed }) => {
+      const percent = (completed / total) * 100;
+      const progress = document.querySelector('#progress-bar .progress');
+      const status = document.getElementById('progress-status');
+      progress.style.width = `${percent}%`;
+      status.textContent = `Completed ${completed} of ${total} games`;
+      if (completed >= total) {
+        document.getElementById('loading-overlay').classList.remove('active');
+      }
     });
 
     // Function to update game board with highlighted rooms
