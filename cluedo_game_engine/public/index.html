@@ -7,10 +7,11 @@
 <body>
   <div id="mode-selection" class="center-screen">
     <h1>AI Cluedo</h1>
-    <div class="mode-options">
-      <button onclick="startGame('spectate')">Start Game</button>
+      <div class="mode-options">
+        <button onclick="startGame('spectate')">Start Game</button>
+        <a href="/results" class="leaderboard-link" target="_blank">Leaderboard</a>
+      </div>
     </div>
-  </div>
 
   <div id="game-container" class="hidden">
     <div class="container">
@@ -67,11 +68,27 @@
     </div>
   </div>
 
-  <div id="shown-card-history"></div>
+    <div id="shown-card-history"></div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
+    <div id="past-games">
+      <h2>Past Games</h2>
+      <div id="past-games-list"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const pastGames = [];
+
+      socket.on('past-games', (games) => {
+        pastGames.push(...games);
+        renderPastGames();
+      });
+
+      socket.on('game-log', (data) => {
+        pastGames.push(data);
+        renderPastGames();
+      });
     
     function startGame(mode) {
       document.getElementById('mode-selection').classList.add('hidden');
@@ -173,33 +190,48 @@
     });
 
     // Function to update game board with highlighted rooms
-    function updateGameBoard(turnHistory) {
-      // Reset all rooms
-      document.querySelectorAll('.room').forEach(room => {
-        room.classList.remove('suggested', 'recent-suggestion');
-        room.querySelector('.room-indicator').textContent = '';
-      });
+      function updateGameBoard(turnHistory) {
+        // Reset all rooms
+        document.querySelectorAll('.room').forEach(room => {
+          room.classList.remove('suggested', 'recent-suggestion');
+          room.querySelector('.room-indicator').textContent = '';
+        });
 
-      // Get recent suggestions (last 3 turns)
-      const recentSuggestions = turnHistory
-        .filter(turn => turn.action === 'suggestion')
-        .slice(-3);
+        // Get recent suggestions (last 3 turns)
+        const recentSuggestions = turnHistory
+          .filter(turn => turn.action === 'suggestion')
+          .slice(-3);
 
-      // Highlight suggested rooms
-      recentSuggestions.forEach((turn, index) => {
-        const roomElement = document.querySelector(`.room[data-room="${turn.suggestion.room}"]`);
-        if (roomElement) {
-          roomElement.classList.add('suggested');
-          if (index === recentSuggestions.length - 1) {
-            roomElement.classList.add('recent-suggestion');
-            // Add agent indicator
-            const indicator = roomElement.querySelector('.room-indicator');
-            indicator.textContent = turn.agent.charAt(0).toUpperCase();
+        // Highlight suggested rooms
+        recentSuggestions.forEach((turn, index) => {
+          const roomElement = document.querySelector(`.room[data-room="${turn.suggestion.room}"]`);
+          if (roomElement) {
+            roomElement.classList.add('suggested');
+            if (index === recentSuggestions.length - 1) {
+              roomElement.classList.add('recent-suggestion');
+              // Add agent indicator
+              const indicator = roomElement.querySelector('.room-indicator');
+              indicator.textContent = turn.agent.charAt(0).toUpperCase();
+            }
           }
-        }
-      });
-    }
-  </script>
+        });
+      }
+
+      function renderPastGames() {
+        const list = document.getElementById('past-games-list');
+        list.innerHTML = pastGames.map((game, idx) => {
+          const lines = game.log.map(entry => {
+            const time = new Date(entry.timestamp).toLocaleTimeString();
+            let line = `[${time}] ${entry.agent || 'System'} - ${entry.type}`;
+            if (entry.message) line += `: ${entry.message}`;
+            if (entry.reasoning) line += `\nReasoning: ${entry.reasoning}`;
+            if (entry.memory) line += `\nMemory: ${entry.memory}`;
+            return line;
+          }).join('\n');
+          return `<details><summary>Game ${idx + 1} - ${game.winner || 'No winner'} (<a href="/results" target="_blank">Leaderboard</a>)</summary><pre class="game-log">${lines}</pre></details>`;
+        }).join('');
+      }
+    </script>
 
   <style>
     /* Updated layout styles */

@@ -192,12 +192,12 @@ body {
   100% { transform: scale(1); opacity: 1; }
 }
 
-.player-marker.red-agent { 
-  background: #ff6b6b; 
+.player-marker.red-agent {
+  background: #ff6b6b;
   content: "R";
 }
-.player-marker.blue-agent { 
-  background: #4ecdc4; 
+.player-marker.blue-agent {
+  background: #4ecdc4;
   content: "B";
 }
 .player-marker.green-agent { 
@@ -483,4 +483,28 @@ body {
   color: #7f8c8d;
   font-size: 0.8em;
   text-align: right;
-} 
+}
+
+#past-games {
+  margin-top: 20px;
+}
+
+#past-games details {
+  background: #2a2a2a;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+#past-games pre {
+  background: #333;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.mode-options .leaderboard-link {
+  margin-left: 10px;
+  color: #4ecdc4;
+  text-decoration: none;
+}

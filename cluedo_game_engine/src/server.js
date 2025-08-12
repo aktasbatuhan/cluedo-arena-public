@@ -7,6 +7,7 @@ import { GameResult } from './models/GameResult.js';
 import { parseArgs } from 'node:util';
 
 let game = null;
+const completedGames = [];
 
 export async function startServer() {
   // Parse command line arguments
@@ -52,6 +53,8 @@ export async function startServer() {
   app.use(express.static('public'));
   
   io.on('connection', (socket) => {
+    socket.emit('past-games', completedGames);
+
     socket.on('game-mode', async (mode) => {
       try {
         // Always create a new game when mode is selected
@@ -332,7 +335,16 @@ async function runGameLoop(game) {
         })) || [],
         timestamp: new Date().toISOString(),
         solution: game.solution,
-        totalTurns: game.currentTurn
+        totalTurns: game.currentTurn,
+        detailedLog: game.gameLog.map(entry => {
+            const time = new Date(entry.timestamp).toISOString();
+            const agent = entry.agent || 'System';
+            const base = `[${time}] ${agent} - ${entry.type}`;
+            const message = entry.message ? `: ${entry.message}` : '';
+            const reasoning = entry.reasoning ? `\nReasoning: ${entry.reasoning}` : '';
+            const memory = entry.memory ? `\nMemory: ${entry.memory}` : '';
+            return base + message + reasoning + memory;
+        })
     };
 
     if (game.winner) {
@@ -344,16 +356,25 @@ async function runGameLoop(game) {
         } catch (saveError) {
             console.error('[runGameLoop] Error occurred during GameResult.saveResults:', saveError);
         }
-    } else {
-        console.log('Game ended without a winner');
-        console.log('[runGameLoop] Attempting to save results (no winner)...');
-        try {
-            await GameResult.saveResults(resultData);
-            console.log('[runGameLoop] Results save call completed (no winner).');
-        } catch (saveError) {
-            console.error('[runGameLoop] Error occurred during GameResult.saveResults (no winner):', saveError);
-        }
-    }
+      } else {
+          console.log('Game ended without a winner');
+          console.log('[runGameLoop] Attempting to save results (no winner)...');
+          try {
+              await GameResult.saveResults(resultData);
+              console.log('[runGameLoop] Results save call completed (no winner).');
+          } catch (saveError) {
+              console.error('[runGameLoop] Error occurred during GameResult.saveResults (no winner):', saveError);
+          }
+      }
+
+      const gameData = {
+        log: game.gameLog,
+        solution: game.solution,
+        winner: game.winner ? game.winner.name : null
+      };
+      completedGames.push(gameData);
+      const gameIndex = completedGames.length;
+      game.io?.emit('game-log', { ...gameData, gameIndex });
     
   } catch (error) {
     console.error('Game loop error:', error);
