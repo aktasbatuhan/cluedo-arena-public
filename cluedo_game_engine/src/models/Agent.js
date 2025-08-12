@@ -18,17 +18,18 @@ export class Agent {
    * @param {string} name - The agent's name/identifier
    * @param {Array<string>} cards - Cards in the agent's hand
    * @param {string} model - The LLM model to use for this agent
-   * @param {string|Object} gameId - Game identifier or reference
+   * @param {Object} gameRef - Reference to the game instance
    */
-  constructor(name, cards, model, gameId) {
+  constructor(name, cards, model, gameRef) {
     this.name = name;
     this.cards = new Set(cards); // Ensure cards is a Set
     this.model = model;
     this.hasLost = false;
-    this.game = null; // Will be set by the Game class
-    
+    this.game = gameRef;
+
     // Initialize memory system
-    this.memory = new Memory(gameId);
+    this.memory = new Memory(name);
+    this.memory.game = gameRef;
     
     // Initialize with known cards
     cards.forEach(card => this.memory.addKnownCard(card));
