@@ -49,6 +49,11 @@
           <h2>Investigation Log</h2>
           <div id="log-messages"></div>
         </div>
+
+        <div class="memory-panel">
+          <h2>Agent Memory</h2>
+          <div id="memory-panel"></div>
+        </div>
       </div>
 
       <div class="players-panel">
@@ -172,6 +177,20 @@
       solutionDisplay.textContent = `${solution.suspect} in the ${solution.room} with the ${solution.weapon}`;
     });
 
+    socket.on('memory-update', (data) => {
+      const panel = document.getElementById('memory-panel');
+      if (!panel) return;
+      let section = panel.querySelector(`[data-agent="${data.agent}"]`);
+      if (!section) {
+        section = document.createElement('div');
+        section.className = 'agent-memory';
+        section.setAttribute('data-agent', data.agent);
+        section.innerHTML = `<h3>${data.agent}</h3><pre class="memory-summary"></pre>`;
+        panel.appendChild(section);
+      }
+      section.querySelector('.memory-summary').textContent = JSON.stringify(data.summary, null, 2);
+    });
+
     // Function to update game board with highlighted rooms
     function updateGameBoard(turnHistory) {
       // Reset all rooms
@@ -284,6 +303,26 @@
       padding: 20px;
       height: 400px;
       overflow-y: auto;
+    }
+
+    .memory-panel {
+      background: #2a2a2a;
+      border-radius: 8px;
+      padding: 20px;
+      height: 400px;
+      overflow-y: auto;
+    }
+
+    #memory-panel .agent-memory {
+      margin-bottom: 12px;
+    }
+
+    #memory-panel pre {
+      background: #333;
+      padding: 8px;
+      border-radius: 4px;
+      color: #ddd;
+      white-space: pre-wrap;
     }
 
     #log-messages {
