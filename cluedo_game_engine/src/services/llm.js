@@ -34,12 +34,11 @@ logger.info(`Using LLM Backend: ${LLM_BACKEND}`);
  * @type {Array<string>}
  */
 export const MODEL_LIST = [
-  'anthropic/claude-3.5-sonnet',          
-  'cohere/command-a',     
-  'cohere/command-r-plus',      
-  'cohere/command-r-plus',          
-  'google/gemini-2.5-flash-preview',     
-  'openai/gpt-4o-2024-11-20'     
+  'anthropic/claude-3.5-sonnet',
+  'cohere/command-a',
+  'cohere/command-r-plus',
+  'google/gemini-2.5-flash-preview',
+  'openai/gpt-4o-2024-11-20'
 ];
 
 // Initialize JSON schema validator
