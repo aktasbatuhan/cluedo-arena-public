@@ -544,3 +544,60 @@ body {
   border-radius: 4px;
   white-space: pre-wrap;
 }
+
+#loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+#loading-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#loading-overlay .loading-content {
+  text-align: center;
+}
+
+#loading-overlay .spinner {
+  width: 50px;
+  height: 50px;
+  border: 6px solid #444;
+  border-top-color: #4a9eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+#progress-bar {
+  width: 300px;
+  height: 10px;
+  background: #333;
+  border-radius: 5px;
+  overflow: hidden;
+  margin: 10px auto 0;
+}
+
+#progress-bar .progress {
+  height: 100%;
+  width: 0%;
+  background: #4a9eff;
+  transition: width 0.3s ease;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

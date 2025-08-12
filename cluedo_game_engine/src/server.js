@@ -81,6 +81,8 @@ export async function startServer() {
             const result = await runGameLoop(multiGame);
             handleGameResult(result);
 
+            io.emit('game-progress', { total: numGames, completed: i + 1 });
+
             // Reset agent memories for the next game in the series
             if (multiGame.agents) {
               for (const agent of multiGame.agents) {
@@ -168,4 +170,4 @@ async function runGameLoop(gameInstance) {
     // Return a partial result on error to avoid crashing the multi-game loop
     return { error: true, message: error.message };
   }
-} 
+}
