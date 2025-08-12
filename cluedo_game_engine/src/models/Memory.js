@@ -1,4 +1,7 @@
 export class Memory {
+  /**
+   * @param {string} agentId - Unique identifier for the agent (usually the agent's name)
+   */
   constructor(agentId) {
     this.agentId = agentId;
     
@@ -196,6 +199,7 @@ export class Memory {
          suggestionCards = [event.suspect, event.weapon, event.room];
       }
       // Direct card shown TO this agent (or by this agent)
+      // event.from and event.to contain agent names
       else if (event.type === 'cardShown' && event.card) {
          if (event.from === this.agentId) {
              // We showed the card
