@@ -682,6 +682,27 @@ export class Game extends EventEmitter {
               const llmDeductions = llmMemoryUpdateResult.deducedCards || [];
               this.logger.info(`LLM deductions for ${agent.name}: ${llmDeductions.length > 0 ? llmDeductions.join(', ') : 'None'}`);
 
+              // Emit memory summary after each agent's memory update
+              try {
+                  const memorySummary = await agent.memory.formatMemoryForLLM();
+                  this.emit('memory-update', { agent: agent.name, summary: memorySummary });
+                  this.turnHistory.push({
+                      turnNumber: this.currentTurn,
+                      agent: agent.name,
+                      action: 'memory-update',
+                      summary: memorySummary
+                  });
+                  this.gameLog.push({
+                      type: 'MEMORY_UPDATE',
+                      agent: agent.name,
+                      summary: memorySummary,
+                      timestamp: new Date(),
+                      turn: this.currentTurn
+                  });
+              } catch (memError) {
+                  this.logger.error(`Failed to emit memory update for ${agent.name}: ${memError.message}`, { error: memError });
+              }
+
               // Calculate Reward and Log Comparison
               const reward = this.calculateDeductionReward(llmDeductions, groundTruthDeductions);
               this.logger.info(`Reward calculation for ${agent.name}:

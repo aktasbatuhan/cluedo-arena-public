@@ -323,7 +323,7 @@ body {
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.mode-options button {
+.mode-options .mode-button {
   margin: 10px;
   padding: 20px 40px;
   font-size: 1.2em;
@@ -336,7 +336,7 @@ body {
   border: 2px solid transparent;
 }
 
-.mode-options button:hover {
+.mode-options .mode-button:hover {
   background: #3a3a3a;
   border-color: #4ecdc4;
   transform: translateY(-2px);
@@ -483,4 +483,64 @@ body {
   color: #7f8c8d;
   font-size: 0.8em;
   text-align: right;
-} 
+}
+
+.memory-panel {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 20px;
+  height: 400px;
+  overflow-y: auto;
+}
+
+#memory-panel .agent-memory {
+  margin-bottom: 12px;
+}
+
+#memory-panel pre {
+  background: #333;
+  padding: 8px;
+  border-radius: 4px;
+  color: #ddd;
+  white-space: pre-wrap;
+}
+
+.multi-game-only.hidden {
+  display: none;
+}
+
+.leaderboard-panel {
+  background: #2a2a2a;
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+#leaderboard {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#leaderboard th,
+#leaderboard td {
+  padding: 4px 8px;
+  text-align: left;
+}
+
+#past-games {
+  margin-top: 20px;
+}
+
+#past-games details {
+  background: #2a2a2a;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+#past-games pre {
+  background: #333;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}

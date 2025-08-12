@@ -2,367 +2,170 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { Game } from './models/Game.js';
-import { runGame } from './gameLogic.js';
 import { GameResult } from './models/GameResult.js';
-import { parseArgs } from 'node:util';
+import { spawnSync } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-let game = null;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-export async function startServer() {
-  // Parse command line arguments
-  const { values } = parseArgs({
-    options: {
-      games: { type: 'string' }, // --games=10
-      mode: { type: 'string' }   // --mode=batch
-    },
-    strict: false // Allow unknown options
+// In-memory store for completed games. Each element will be a comprehensive object.
+const completedGames = [];
+let game = null; // Single game instance for 'single' mode
+
+/**
+ * Computes leaderboard statistics by calling an external Python script.
+ * @param {Array<Object>} results - An array of game result objects.
+ * @returns {Object} An object containing the leaderboard stats.
+ */
+function computeLeaderboard(results) {
+  const scriptPath = path.resolve(__dirname, '../../scripts/utility').replace(/\\/g, '/');
+  const pyCode = `import json,sys,os\nsys.path.append('${scriptPath}')\nfrom leaderboard import analyze_games\ndata=json.loads(sys.stdin.read())\nprint(json.dumps(analyze_games(data)))`;
+
+  const out = spawnSync('python', ['-c', pyCode], {
+    input: JSON.stringify(results),
+    encoding: 'utf-8'
   });
 
-  // If batch mode is specified, run multiple games
-  if (values.mode === 'batch' && values.games) {
-    const numGames = parseInt(values.games);
-    console.log(`Starting batch mode: Running ${numGames} games...`);
-    
-    for (let i = 0; i < numGames; i++) {
-      console.log(`\n=== Starting Game ${i + 1}/${numGames} ===\n`);
-      const game = new Game('spectate');
-      await game.initialize();
-      await runGameLoop(game);
-      
-      // Clear all agent memories before next game
-      if (game.agents) {
-        for (const agent of game.agents) {
-          await agent.memory.reset();
-        }
-      }
-      
-      // Small delay between games
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    console.log('\nBatch mode completed. All games finished.');
-    process.exit(0);
-    return;
+  if (out.status !== 0) {
+    console.error('Leaderboard generation failed:', out.stderr);
+    return {};
   }
+  try {
+    return JSON.parse(out.stdout);
+  } catch (err) {
+    console.error('Failed to parse leaderboard output:', err);
+    return {};
+  }
+}
 
+export async function startServer() {
   const app = express();
   const server = createServer(app);
   const io = new Server(server);
-  
+
   app.use(express.static('public'));
-  
+
+  /**
+   * Handles the result of a completed game.
+   * - Stores the comprehensive result.
+   * - Emits updates for game completion and leaderboard.
+   * @param {Object} resultData - The data from the completed game.
+   */
+  function handleGameResult(resultData) {
+    completedGames.push(resultData);
+
+    // Emit the detailed log for this specific game
+    io.emit('game-log', { ...resultData, gameIndex: completedGames.length });
+
+    // Compute and emit the updated leaderboard
+    const leaderboard = computeLeaderboard(completedGames);
+    io.emit('leaderboard-update', leaderboard);
+  }
+
   io.on('connection', (socket) => {
+    // When a new client connects, send them the history
+    socket.emit('past-games', completedGames);
+    if (completedGames.length > 0) {
+      socket.emit('leaderboard-update', computeLeaderboard(completedGames));
+    }
+
     socket.on('game-mode', async (mode) => {
       try {
-        // Always create a new game when mode is selected
-        game = new Game(mode, io);
-        await game.initialize();
-        
-        // Set up event listeners for UI updates
-        game.on('suggestion', (data) => {
-          io.emit('game-event', {
-            type: 'SUGGESTION',
-            timestamp: new Date(),
-            agent: data.agent,
-            suggestion: data.suggestion,
-            reasoning: data.reasoning,
-            message: `${data.agent} suggests ${data.suggestion.suspect} in the ${data.suggestion.room} with the ${data.suggestion.weapon}`
-          });
-        });
+        if (mode === 'multi') {
+          const numGames = 5; // Or make this configurable
+          for (let i = 0; i < numGames; i++) {
+            const multiGame = new Game('spectate', io); // UI will spectate
+            await multiGame.initialize();
+            const result = await runGameLoop(multiGame);
+            handleGameResult(result);
 
-        game.on('challenge', (data) => {
-          io.emit('game-event', {
-            type: 'CHALLENGE',
-            timestamp: new Date(),
-            agent: data.agent,
-            cardShown: data.cardShown,
-            message: `${data.agent} showed ${data.cardShown} to disprove the suggestion`
-          });
-        });
-
-        game.on('accusation', async (data) => {
-          if (game?.mode === 'play' && game.humanPlayer) {
-            const isCorrectAccusation = await game.processHumanAccusation(data.accusation);
-            if (isCorrectAccusation) {
-              const winner = game.gameState.players.find(player => player.color === game.currentPlayer.color);
-              io.emit('GAME_EVENT', { 
-                type: 'GAME_OVER',
-                winner: { name: winner.name },
-                timestamp: new Date().toISOString()
-              });
-              
-              // Save game result
-              await GameResult.saveResults({
-                winner: winner.name,
-                players: game.gameState.players,
-                accusation: data.accusation,
-                timestamp: new Date().toISOString()
-              });
-
-              game.resetGame();
-            } else {
-              // Handle incorrect accusation
-              game.gameState.players = game.gameState.players.filter(p => p.color !== game.currentPlayer.color);
-              io.emit('GAME_EVENT', {
-                type: 'ACCUSATION_ATTEMPT',
-                agent: game.currentPlayer.name,
-                accusation: data.accusation,
-                eliminated: true,
-                timestamp: new Date().toISOString()
-              });
-              
-              // Check if any players left
-              if (game.gameState.players.length === 0) {
-                await GameResult.saveResults({
-                  winner: 'No winner',
-                  players: game.originalPlayers,
-                  timestamp: new Date().toISOString()
-                });
-                game.resetGame();
+            // Reset agent memories for the next game in the series
+            if (multiGame.agents) {
+              for (const agent of multiGame.agents) {
+                await agent.memory.reset();
               }
             }
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between games
           }
-        });
+          return; // End after multi-game loop
+        }
 
-        // Add turn update events
-        game.on('turn-start', (data) => {
-          io.emit('game-event', {
-            type: 'TURN_START',
-            timestamp: new Date(),
-            agent: data.agent,
-            message: `${data.agent}'s turn`
-          });
-        });
+        // For 'single' mode
+        game = new Game('single', io);
+        await game.initialize();
 
-        // Send initial state
+        // Forward all necessary events from the game instance to the client
+        game.on('suggestion', (data) => io.emit('game-event', { type: 'SUGGESTION', ...data }));
+        game.on('challenge', (data) => io.emit('game-event', { type: 'CHALLENGE', ...data }));
+        game.on('accusation', (data) => io.emit('game-event', { type: 'ACCUSATION', ...data }));
+        game.on('memory-update', (data) => io.emit('memory-update', data));
+
+        // Send initial state for the new game
         socket.emit('game-state', game.getGameSummary());
         
-        if (mode === 'spectate') {
-          console.log('Starting AI-only game...');
-          runGameLoop(game);
-        }
+        // Start the game loop for the single game
+        const result = await runGameLoop(game);
+        handleGameResult(result);
+
       } catch (error) {
         console.error('Failed to start game:', error);
         socket.emit('error', { message: 'Failed to start game' });
       }
     });
-
-    socket.on('player-action', async (action) => {
-      if (game?.mode === 'play' && game.humanPlayer) {
-        await game.processHumanAction(action);
-      }
-    });
   });
 
-  // Add results route
-  app.get('/results', (req, res) => {
-    const fs = require('fs');
-    const path = require('path');
-    const resultPath = path.join(__dirname, '../game_results.json');
-    
-    try {
-      const results = JSON.parse(fs.readFileSync(resultPath));
-      res.send(`
-        <html>
-          <head>
-            <title>Game Results</title>
-            <style>
-              table { margin-bottom: 20px; }
-              .stats-section { margin-bottom: 30px; }
-              .game-log {
-                font-family: monospace;
-                white-space: pre-wrap;
-                background: #f5f5f5;
-                padding: 10px;
-                margin: 10px 0;
-                border-radius: 4px;
-              }
-            </style>
-          </head>
-          <body>
-            <h1>Game Statistics</h1>
-            
-            <div class="stats-section">
-              <h2>Model Performance</h2>
-              <div id="model-stats"></div>
-            </div>
-
-            <div class="stats-section">
-              <h2>Detailed Game Logs</h2>
-              <div id="game-logs"></div>
-            </div>
-
-            <script>
-              const results = ${JSON.stringify(results)};
-              
-              // Model stats calculation
-              const modelStats = {};
-              results.forEach(game => {
-                game.participants.forEach(participant => {
-                  if (!modelStats[participant.model]) {
-                    modelStats[participant.model] = {
-                      games: 0,
-                      wins: 0,
-                      totalTurns: 0
-                    };
-                  }
-                  modelStats[participant.model].games++;
-                  modelStats[participant.model].totalTurns += game.turns;
-                  
-                  if (game.winner && participant.name === game.winner.name) {
-                    modelStats[participant.model].wins++;
-                  }
-                });
-              });
-
-              let modelStatsHtml = '<table border="1">';
-              modelStatsHtml += '<tr><th>Model</th><th>Games Played</th><th>Wins</th><th>Win Rate</th><th>Avg Turns</th></tr>';
-              
-              Object.entries(modelStats).forEach(([model, stats]) => {
-                modelStatsHtml += \`<tr>
-                  <td>\${model}</td>
-                  <td>\${stats.games}</td>
-                  <td>\${stats.wins}</td>
-                  <td>\${(stats.wins/stats.games*100).toFixed(1)}%</td>
-                  <td>\${(stats.totalTurns/stats.games).toFixed(1)}</td>
-                </tr>\`;
-              });
-              
-              modelStatsHtml += '</table>';
-
-              // Add detailed logs
-              const gameLogs = results.map((game, index) => {
-                return \`
-                  <details>
-                    <summary>Game \${index + 1} - \${game.winner ? game.winner.name : 'No winner'}</summary>
-                    <div class="game-log">
-                      \${game.detailedLog.join('\n')}
-                    </div>
-                  </details>
-                \`;
-              }).join('');
-              
-              document.getElementById('game-logs').innerHTML = gameLogs;
-            </script>
-          </body>
-        </html>
-      `);
-    } catch (e) {
-      res.status(500).send('Error loading results');
-    }
-  });
-
-  // Remove duplicate server startup
-  return new Promise((resolve, reject) => {
-    const PORT = process.env.PORT || 3000;
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      resolve();
-    }).on('error', error => {
-      if (error.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use. Please either:
-1. Close other running instances
-2. Use a different port: PORT=4000 npm start
-3. Kill existing process: lsof -i tcp:${PORT} | awk 'NR!=1 {print $2}' | xargs kill -9`);
-      }
-      reject(error);
-    });
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  }).on('error', (error) => {
+    console.error('Server startup error:', error);
   });
 }
 
-async function runGameLoop(game) {
+/**
+ * Runs the main game loop for a given game instance.
+ * @param {Game} gameInstance - The game to run.
+ * @returns {Promise<Object>} A promise that resolves with the game result data.
+ */
+async function runGameLoop(gameInstance) {
   try {
-    console.log('Starting game loop...');
-    const missedOpportunities = new Map();
-    
-    while (!game.isGameOver()) {
-      const currentTurn = game.currentTurn;
-      console.log(`\nProcessing turn ${currentTurn}`);
-      
-      const turnResult = await game.processTurn();
-      
-      if (turnResult?.suggestion) {
-        const currentAgent = game.agents.find(a => a.name === turnResult.agent);
-        
-        if (currentAgent) {
-          console.log('Checking suggestion:', {
-            suggestion: turnResult.suggestion,
-            solution: game.solution
-          });
-          
-          if (turnResult.suggestion.suspect === game.solution.suspect &&
-              turnResult.suggestion.weapon === game.solution.weapon &&
-              turnResult.suggestion.room === game.solution.room) {
-            
-            console.log(`Found missed opportunity by ${currentAgent.name}`);
-            
-            const playerMisses = missedOpportunities.get(currentAgent.name) || [];
-            playerMisses.push({
-              turn: currentTurn,
-              suggestion: turnResult.suggestion,
-              confidence: turnResult.accusationDecision?.confidence || null,
-              reasoning: turnResult.accusationDecision?.reasoning || null
-            });
-            missedOpportunities.set(currentAgent.name, playerMisses);
-          }
-        }
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      if (game.winner || game.currentTurn >= game.maxTurns) {
-        console.log('Game ending condition met');
-        break;
-      }
+    while (!gameInstance.isGameOver()) {
+      await gameInstance.processTurn();
+      // A small delay to make the UI updates observable
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
-    // Log missed opportunities before saving
-    console.log('Missed Opportunities:', Object.fromEntries(missedOpportunities));
-    
-    console.log('Game loop completed');
+
+    // Construct a comprehensive result object
     const resultData = {
-        winner: game.winner ? {
-            name: game.winner.name,
-            model: game.winner.model
-        } : 'No winner',
-        players: game.agents?.map(agent => ({
+        winner: gameInstance.winner ? {
+            name: gameInstance.winner.name,
+            model: gameInstance.winner.model,
+        } : null,
+        players: gameInstance.agents.map(agent => ({
             name: agent.name,
             model: agent.model,
-            missedOpportunities: missedOpportunities.get(agent.name) || []
-        })) || [],
+        })),
+        log: gameInstance.gameLog, // Detailed log for historical view
+        solution: gameInstance.solution,
+        totalTurns: gameInstance.currentTurn,
         timestamp: new Date().toISOString(),
-        solution: game.solution,
-        totalTurns: game.currentTurn
     };
-
-    if (game.winner) {
-        console.log(`Winner: ${game.winner.name}`);
-        console.log('[runGameLoop] Attempting to save results...');
-        try {
-            await GameResult.saveResults(resultData);
-            console.log('[runGameLoop] Results save call completed.');
-        } catch (saveError) {
-            console.error('[runGameLoop] Error occurred during GameResult.saveResults:', saveError);
-        }
-    } else {
-        console.log('Game ended without a winner');
-        console.log('[runGameLoop] Attempting to save results (no winner)...');
-        try {
-            await GameResult.saveResults(resultData);
-            console.log('[runGameLoop] Results save call completed (no winner).');
-        } catch (saveError) {
-            console.error('[runGameLoop] Error occurred during GameResult.saveResults (no winner):', saveError);
-        }
-    }
     
+    // Save to the persistent JSON file
+    await GameResult.saveResults(resultData);
+
+    return resultData; // Return the result for in-memory processing
   } catch (error) {
     console.error('Game loop error:', error);
     console.error('Game state:', {
-      currentTurn: game.currentTurn,
-      agents: game.agents?.map(a => a.name),
-      solution: game.solution,
-      missedOpportunities: Object.fromEntries(missedOpportunities)
+      currentTurn: gameInstance.currentTurn,
+      agents: gameInstance.agents?.map(a => a.name),
+      solution: gameInstance.solution,
     });
     console.error(error.stack);
+    // Return a partial result on error to avoid crashing the multi-game loop
+    return { error: true, message: error.message };
   }
 } 
