@@ -134,6 +134,11 @@ export async function startServer() {
           });
         });
 
+        // Forward memory updates to clients
+        game.on('memory-update', (data) => {
+          io.emit('memory-update', data);
+        });
+
         // Send initial state
         socket.emit('game-state', game.getGameSummary());
         

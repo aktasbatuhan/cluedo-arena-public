@@ -62,6 +62,20 @@ socket.on('game-event', (event) => {
   }
 });
 
+socket.on('memory-update', (data) => {
+  const panel = document.getElementById('memory-panel');
+  if (!panel) return;
+  let section = panel.querySelector(`[data-agent="${data.agent}"]`);
+  if (!section) {
+    section = document.createElement('div');
+    section.className = 'agent-memory';
+    section.setAttribute('data-agent', data.agent);
+    section.innerHTML = `<h3>${data.agent}</h3><pre class="memory-summary"></pre>`;
+    panel.appendChild(section);
+  }
+  section.querySelector('.memory-summary').textContent = JSON.stringify(data.summary, null, 2);
+});
+
 let isHumanPlayer = false;
 let playerIndex = -1;
 
