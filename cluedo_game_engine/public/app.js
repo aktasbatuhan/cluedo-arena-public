@@ -285,9 +285,9 @@ function startGame(mode) {
     
     // Notify server of mode choice
     socket.emit('game-mode', mode);
-    
-    // If playing, show controls
-    if (mode === 'play') {
+
+    // Show controls when playing a single-player game
+    if (mode === 'single') {
       document.getElementById('player-controls').classList.remove('hidden');
     }
   }, 300);

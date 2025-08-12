@@ -323,7 +323,7 @@ body {
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.mode-options button {
+.mode-options .mode-button {
   margin: 10px;
   padding: 20px 40px;
   font-size: 1.2em;
@@ -336,7 +336,7 @@ body {
   border: 2px solid transparent;
 }
 
-.mode-options button:hover {
+.mode-options .mode-button:hover {
   background: #3a3a3a;
   border-color: #4ecdc4;
   transform: translateY(-2px);
