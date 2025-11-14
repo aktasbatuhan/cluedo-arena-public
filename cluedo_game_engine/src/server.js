@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { Game } from './models/Game.js';
 import { GameResult } from './models/GameResult.js';
+import { HumanPlayer } from './models/HumanPlayer.js';
 import { spawnSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -74,6 +75,7 @@ export async function startServer() {
     socket.on('game-mode', async (data) => {
       try {
         const { mode, count } = typeof data === 'object' ? data : { mode: data };
+
         if (mode === 'multi') {
           let numGames = parseInt(count, 10);
           if (isNaN(numGames) || numGames <= 0) {
@@ -96,8 +98,53 @@ export async function startServer() {
           return; // End after multi-game loop
         }
 
-        // For 'single' mode
-        game = new Game('single', io);
+        if (mode === 'human') {
+          // Create game with human player
+          game = new Game('play', io);
+          await game.initialize();
+
+          // Replace first agent with human player
+          const humanCards = game.agents[0].cards;
+          const humanPlayerName = 'You (Human Player)';
+          game.humanPlayer = new HumanPlayer(humanPlayerName, Array.from(humanCards), game, io, socket.id);
+          game.agents[0] = game.humanPlayer;
+
+          // Set up Socket.IO event listeners for human player actions
+          socket.on('human-suggestion', (suggestion) => {
+            if (game.humanPlayer) {
+              io.emit('human-suggestion', suggestion);
+            }
+          });
+
+          socket.on('human-accusation', (decision) => {
+            if (game.humanPlayer) {
+              io.emit('human-accusation', decision);
+            }
+          });
+
+          socket.on('human-challenge-response', (response) => {
+            if (game.humanPlayer) {
+              io.emit('human-challenge-response', response);
+            }
+          });
+
+          // Forward all necessary events from the game instance to the client
+          game.on('suggestion', (data) => io.emit('game-event', { type: 'SUGGESTION', ...data }));
+          game.on('challenge', (data) => io.emit('game-event', { type: 'CHALLENGE', ...data }));
+          game.on('accusation', (data) => io.emit('game-event', { type: 'ACCUSATION', ...data }));
+          game.on('memory-update', (data) => io.emit('memory-update', data));
+
+          // Send initial state for the new game
+          socket.emit('game-state', game.getGameSummary());
+
+          // Start the game loop for human player game
+          const result = await runGameLoop(game);
+          handleGameResult(result);
+          return;
+        }
+
+        // For 'single' mode (AI only, spectate)
+        game = new Game('spectate', io);
         await game.initialize();
 
         // Forward all necessary events from the game instance to the client
@@ -108,7 +155,7 @@ export async function startServer() {
 
         // Send initial state for the new game
         socket.emit('game-state', game.getGameSummary());
-        
+
         // Start the game loop for the single game
         const result = await runGameLoop(game);
         handleGameResult(result);

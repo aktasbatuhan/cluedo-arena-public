@@ -3,13 +3,15 @@
 <head>
   <title>AI Cluedo</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/humanPlayer.css">
 </head>
 <body>
   <div id="mode-selection" class="center-screen">
     <h1>AI Cluedo</h1>
     <div class="mode-options">
-      <button class="mode-button" onclick="startGame('single')">Single Game</button>
-      <button class="mode-button" onclick="startGame('multi')">Multiple Game</button>
+      <button class="mode-button" onclick="startGame('human')">🎮 Play as Human</button>
+      <button class="mode-button" onclick="startGame('single')">👁️ Watch Single Game</button>
+      <button class="mode-button" onclick="startGame('multi')">📊 Watch Multiple Games</button>
       <input id="multi-count" type="number" min="1" value="5" style="width: 60px; margin-left: 8px;" />
     </div>
   </div>
@@ -235,6 +237,7 @@
       });
     }
   </script>
+  <script src="/humanPlayer.js"></script>
 
   <style>
     /* Updated layout styles */
