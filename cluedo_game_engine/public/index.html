@@ -7,12 +7,47 @@
 </head>
 <body>
   <div id="mode-selection" class="center-screen">
-    <h1>AI Cluedo</h1>
+    <h1>🔍 AI Cluedo Arena</h1>
+    <p class="subtitle">Experience the classic mystery game powered by AI agents</p>
+    <div id="connection-status" class="connection-status connecting">
+      <span class="status-dot"></span>
+      <span id="status-text">Connecting to server...</span>
+    </div>
     <div class="mode-options">
-      <button class="mode-button" onclick="startGame('human')">🎮 Play as Human</button>
-      <button class="mode-button" onclick="startGame('single')">👁️ Watch Single Game</button>
-      <button class="mode-button" onclick="startGame('multi')">📊 Watch Multiple Games</button>
-      <input id="multi-count" type="number" min="1" value="5" style="width: 60px; margin-left: 8px;" />
+      <button class="mode-button" onclick="startGame('human')" disabled id="btn-human">
+        <span class="btn-icon">🎮</span>
+        <span class="btn-text">Play as Human</span>
+        <span class="btn-desc">Challenge AI agents yourself</span>
+      </button>
+      <button class="mode-button" onclick="startGame('single')" disabled id="btn-single">
+        <span class="btn-icon">👁️</span>
+        <span class="btn-text">Watch Single Game</span>
+        <span class="btn-desc">Observe one AI battle</span>
+      </button>
+      <button class="mode-button" onclick="startGame('multi')" disabled id="btn-multi">
+        <span class="btn-icon">📊</span>
+        <span class="btn-text">Watch Multiple Games</span>
+        <span class="btn-desc">Compare AI performance</span>
+      </button>
+      <input id="multi-count" type="number" min="1" max="100" value="5" style="width: 60px; margin-left: 8px;" />
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="hidden">
+    <div class="loading-modal">
+      <div class="spinner"></div>
+      <h2 id="loading-text">Starting game...</h2>
+      <p id="loading-subtext">Initializing AI agents</p>
+    </div>
+  </div>
+
+  <!-- Error Modal -->
+  <div id="error-modal" class="hidden">
+    <div class="error-modal-content">
+      <h2>⚠️ Connection Error</h2>
+      <p id="error-message"></p>
+      <button class="btn-primary" onclick="location.reload()">Reload Page</button>
     </div>
   </div>
 
@@ -102,16 +137,82 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    
+
+    // Connection status handling
+    socket.on('connect', () => {
+      const status = document.getElementById('connection-status');
+      const statusText = document.getElementById('status-text');
+      status.className = 'connection-status connected';
+      statusText.textContent = 'Connected';
+
+      // Enable buttons
+      ['btn-human', 'btn-single', 'btn-multi'].forEach(id => {
+        document.getElementById(id).disabled = false;
+      });
+    });
+
+    socket.on('disconnect', () => {
+      const status = document.getElementById('connection-status');
+      const statusText = document.getElementById('status-text');
+      status.className = 'connection-status disconnected';
+      statusText.textContent = 'Disconnected';
+
+      // Show error if game is running
+      if (!document.getElementById('game-container').classList.contains('hidden')) {
+        showError('Lost connection to server. Please refresh the page.');
+      }
+    });
+
+    socket.on('connect_error', () => {
+      const status = document.getElementById('connection-status');
+      const statusText = document.getElementById('status-text');
+      status.className = 'connection-status disconnected';
+      statusText.textContent = 'Connection failed';
+
+      showError('Unable to connect to the game server. Please make sure the server is running and try again.');
+    });
+
+    function showError(message) {
+      document.getElementById('error-message').textContent = message;
+      document.getElementById('error-modal').classList.remove('hidden');
+    }
+
+    function showLoading(text, subtext) {
+      document.getElementById('loading-text').textContent = text;
+      document.getElementById('loading-subtext').textContent = subtext || '';
+      document.getElementById('loading-overlay').classList.remove('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+
     function startGame(mode) {
-      document.getElementById('mode-selection').classList.add('hidden');
-      document.getElementById('game-container').classList.remove('hidden');
+      const modeNames = {
+        'human': 'Play as Human',
+        'single': 'Single Game',
+        'multi': 'Multiple Games'
+      };
+
+      showLoading(
+        `Starting ${modeNames[mode]}...`,
+        mode === 'human' ? 'Preparing your cards' : 'Initializing AI agents'
+      );
+
+      setTimeout(() => {
+        document.getElementById('mode-selection').classList.add('hidden');
+        document.getElementById('game-container').classList.remove('hidden');
+        hideLoading();
+      }, 1500);
+
       const data = { mode };
       if (mode === 'multi') {
         const input = document.getElementById('multi-count');
         const count = parseInt(input?.value, 10);
-        if (!isNaN(count)) {
+        if (!isNaN(count) && count > 0 && count <= 100) {
           data.count = count;
+        } else {
+          data.count = 5; // default
         }
       }
       socket.emit('game-mode', data);

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: cluedo-arena
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
+      - key: LLM_BACKEND
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: PREDIBASE_API_KEY
+        sync: false
+    healthCheckPath: /

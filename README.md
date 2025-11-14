@@ -158,6 +158,18 @@ For very large-scale evaluations, this project supports preparing batch input fi
     ```
     The application will be available at `http://localhost:3000` (or the port specified in your `.env` file).
 
+## Deployment
+
+Want to deploy Cluedo Arena to the cloud? Check out our comprehensive [**Deployment Guide**](DEPLOYMENT.md) which covers:
+
+- 🚀 **Railway** (Recommended) - Best Socket.IO support with zero config
+- 🎯 **Render** - Excellent alternative with free tier
+- ⚠️ **Vercel** - Not recommended due to WebSocket limitations
+- 📦 Environment variable setup
+- 🔧 Troubleshooting tips
+
+The deployment guide includes step-by-step instructions for each platform and explains why some platforms work better than others for this real-time application.
+
 ## Configuration
 
 Key configurations are managed through environment variables in the `cluedo_game_engine/.env` file:
