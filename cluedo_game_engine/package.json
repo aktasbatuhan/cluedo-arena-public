@@ -8,6 +8,11 @@
     "start": "node src/index.js",
     "dev": "nodemon --ignore '*.log' --ignore 'logs/*' --ignore 'game_results.json' src/index.js",
     "test": "node --test ../tests/*.test.js",
+    "test:watch": "node --test --watch ../tests/*.test.js",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "format": "prettier --write \"src/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\"",
     "run-games": "node src/index.js --run-games",
     "run-games:3": "node src/index.js --run-games --num-games=3",
     "run-games:openrouter": "node src/index.js --run-games --num-games=3 --llm-backend=openrouter"
@@ -24,7 +29,8 @@
   "license": "MIT",
   "devDependencies": {
     "eslint": "^8.56.0",
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "prettier": "^3.0.0"
   },
   "dependencies": {
     "ajv": "^8.17.1",
@@ -35,7 +41,6 @@
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "js-yaml": "^4.1.0",
-    "mongoose": "^8.0.2",
     "openai": "^4.98.0",
     "socket.io": "^4.8.1",
     "winston": "^3.17.0",
