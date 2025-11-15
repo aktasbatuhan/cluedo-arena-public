@@ -68,7 +68,7 @@ export class HumanPlayer {
       }, 300000); // 5 minute timeout
 
       // Send request to client
-      this.io.to(this.socketId).emit('request-suggestion', {
+      this.io.emit('request-suggestion', {
         playerName: this.name,
         location: this.location,
         cards: Array.from(this.cards),
@@ -132,7 +132,7 @@ export class HumanPlayer {
       }, 60000); // 1 minute timeout for accusation decision
 
       // Send request to client
-      this.io.to(this.socketId).emit('request-accusation', {
+      this.io.emit('request-accusation', {
         playerName: this.name,
         suggestion,
         challengeResult,
@@ -183,7 +183,7 @@ export class HumanPlayer {
       }, 60000); // 1 minute timeout
 
       // Send request to client
-      this.io.to(this.socketId).emit('request-challenge-response', {
+      this.io.emit('request-challenge-response', {
         playerName: this.name,
         suggestion,
         matchingCards,
@@ -220,7 +220,7 @@ export class HumanPlayer {
 
     // Notify client
     if (this.io && this.socketId) {
-      this.io.to(this.socketId).emit('player-eliminated', {
+      this.io.emit('player-eliminated', {
         message: 'You made an incorrect accusation and have been eliminated from the game.',
       });
     }
